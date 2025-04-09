@@ -57,8 +57,8 @@ def represent():
             "Request received, but the InsightFace model was not loaded.")
         return jsonify({"error": "InsightFace model not initialized correctly."}), 500
 
-    # 1. Get image data from POST request
-    image_data = request.form['image_data']
+    # 1. Get image_data from POST body
+    image_data = request.form.get('image_data')
 
     if not image_data:
         logging.warning("No image data provided.")
@@ -108,6 +108,7 @@ def represent():
                     "bbox": face.bbox.tolist(),
                     "kps": face.kps.tolist(),
                     "det_score": float(face.det_score),
+                    "face_image_bytes": image_data
                 })
 
         logging.info(f"Embeddings extracted: {len(embeddings)}")
