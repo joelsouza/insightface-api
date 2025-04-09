@@ -1,4 +1,3 @@
-import flask
 from flask import Flask, request, jsonify
 import insightface
 import numpy as np
@@ -7,7 +6,6 @@ import requests
 import os
 import logging
 import time
-import pdb
 
 # --- Logging Configuration ---
 logging.basicConfig(level=logging.INFO,
