@@ -13,6 +13,8 @@ logging.basicConfig(level=logging.INFO,
 
 # --- Flask Application Configuration ---
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max-limit.
+app.config['MAX_FORM_MEMORY_SIZE'] = 16 * 1024 * 1024  # 16MB max-limit.
 
 # --- InsightFace Model Loading ---
 # Loads the model once when the application starts to avoid reloading with each request.
