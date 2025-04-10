@@ -67,6 +67,12 @@ def represent():
         logging.warning("No image data provided.")
         return jsonify({"error": "No image data provided."}), 400
 
+    img = None
+    faces = None
+    img_array = None
+    decoded_data = None
+    embeddings = []
+
     try:
         # Process image data directly from request
         logging.info("Processing image from provided image_data")
@@ -103,7 +109,6 @@ def represent():
             f"Facial analysis completed in {end_time_analysis - start_time_analysis:.2f} seconds. Faces found: {len(faces)}")
 
         # 5. Prepare the response
-        embeddings = []
         if faces:
             for face in faces:
                 embeddings.append({
@@ -116,6 +121,11 @@ def represent():
 
         logging.info(f"Embeddings extracted: {len(embeddings)}")
 
+        # Liberar memória de forma explícita
+        decoded_data = None
+        img_array = None
+        img = None
+
         return jsonify({"embeddings": embeddings})
 
     except requests.exceptions.RequestException as e:
@@ -126,8 +136,12 @@ def represent():
         logging.exception(f"Unexpected error processing: {e}")
         return jsonify({"error": f"Internal server error: {e}"}), 500
     finally:
+        # Liberar memória de forma explícita
+        decoded_data = None
+        img_array = None
         img = None
         faces = None
+        embeddings = None
         gc.collect()
 
 
