@@ -35,7 +35,7 @@ try:
                                                 'detection', 'recognition'],
                                             providers=providers)
     # ctx_id=0 usually refers to the first GPU or CPU. det_size is important for detection.
-    face_app.prepare(ctx_id=0, det_size=(640, 640), det_thresh=0.5)
+    face_app.prepare(ctx_id=0, det_size=(1280, 1280), det_thresh=0.5)
     end_time = time.time()
     logging.info(
         f"InsightFace model loaded in {end_time - start_time:.2f} seconds.")
