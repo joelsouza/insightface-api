@@ -6,6 +6,7 @@ import requests
 import os
 import logging
 import time
+import gc
 
 # --- Logging Configuration ---
 logging.basicConfig(level=logging.INFO,
@@ -124,6 +125,10 @@ def represent():
         # Captures any other unexpected error during the process
         logging.exception(f"Unexpected error processing: {e}")
         return jsonify({"error": f"Internal server error: {e}"}), 500
+    finally:
+        img = None
+        faces = None
+        gc.collect()
 
 
 # --- Application Execution ---
