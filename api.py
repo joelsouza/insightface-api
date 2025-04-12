@@ -39,6 +39,7 @@ def represent():
         return jsonify({"error": "InsightFace model not initialized correctly."}), 500
 
     image_file = request.files.get('image_file')
+
     if not image_file:
         logging.warning("No image file provided.")
         return jsonify({"error": "No image file provided."}), 400
@@ -52,7 +53,8 @@ def represent():
         tmp_dir = os.path.join(os.path.dirname(__file__), 'tmp')
         os.makedirs(tmp_dir, exist_ok=True)
 
-        image_path = os.path.join(tmp_dir, f"{time.time()}.jpg")
+        extension = image_file.content_type.split('/')[-1]
+        image_path = os.path.join(tmp_dir, f"{time.time()}.{extension}")
         with open(image_path, 'wb') as f:
             f.write(file_bytes)
 
