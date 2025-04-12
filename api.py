@@ -1,11 +1,11 @@
 from flask import Flask, request, jsonify
 import insightface
-import numpy as np
 import cv2
 import os
 import logging
 import time
 import gc
+import base64
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
@@ -15,8 +15,8 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 app.config['MAX_FORM_MEMORY_SIZE'] = 16 * 1024 * 1024
 
 providers = ['CPUExecutionProvider']
-max_image_width = 1280
-max_image_height = 1280
+max_image_width = 640
+max_image_height = 640
 
 try:
     logging.info("Loading InsightFace model 'buffalo_l'...")
@@ -76,6 +76,7 @@ def represent():
                 "det_score": float(face.det_score),
                 "gender": int(face.gender) if hasattr(face, 'gender') and face.gender is not None else None,
                 "age": int(face.age) if hasattr(face, 'age') and face.age is not None else None,
+                "image_data": base64.b64encode(img).decode('utf-8')
             })
 
         logging.info(f"Embeddings extracted: {len(embeddings)}")
