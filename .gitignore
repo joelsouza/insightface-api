@@ -262,4 +262,7 @@ pyrightconfig.json
 # Bruno
 bruno/
 
+# tmp
+tmp/
+
 # End of https://www.toptal.com/developers/gitignore/api/python,flask
