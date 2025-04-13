@@ -76,8 +76,7 @@ def represent():
                 "kps": face.kps.tolist(),
                 "det_score": float(face.det_score),
                 "gender": int(face.gender) if hasattr(face, 'gender') and face.gender is not None else None,
-                "age": int(face.age) if hasattr(face, 'age') and face.age is not None else None,
-                "image_data": base64.b64encode(img).decode('utf-8')
+                "age": int(face.age) if hasattr(face, 'age') and face.age is not None else None
             })
 
         logging.info(f"Embeddings extracted: {len(embeddings)}")
