@@ -1,25 +1,31 @@
-#!/bin/sh
+#!/bin/bash
 
-# Set default values if not specified
-: ${WORKERS:=4}
-: ${THREADS:=2}
-: ${TIMEOUT:=120}
-: ${MAX_REQUESTS:=100}
-: ${MAX_REQUESTS_JITTER:=100}
+# Environment variables (customize as needed)
+export FLASK_APP=app.py
+export FLASK_ENV=production
 
-# Log startup info
-echo "Starting Gunicorn with $WORKERS workers and $THREADS threads"
+# Calculate optimal number of workers based on CPU cores
+# Formula: (2 × cores) + 1
+# For shared-cpu-8x with 8 vCPUs: (2 × 8) + 1 = 17
+WORKERS=17
 
-gunicorn --bind 0.0.0.0:5001 \
-         --workers $WORKERS \
-         --threads $THREADS \
-         --timeout $TIMEOUT \
-         --max-requests $MAX_REQUESTS \
-         --max-requests-jitter $MAX_REQUESTS_JITTER \
-         --worker-tmp-dir /dev/shm \
-         --worker-class gthread \
-         --log-level info \
-         --access-logfile - \
-         --error-logfile - \
-         --log-file - \
-         api:app
+# Number of threads per worker (good for I/O bound applications)
+# If your app is CPU-bound, you might want to use 1 instead
+THREADS=3
+
+# Set timeout (in seconds)
+TIMEOUT=60
+
+# Start Gunicorn
+exec gunicorn \
+    --workers=$WORKERS \
+    --threads=$THREADS \
+    --worker-class=gthread \
+    --timeout=$TIMEOUT \
+    --bind=0.0.0.0:5001 \
+    --access-logfile=- \
+    --error-logfile=- \
+    --log-level=info \
+    --max-requests=1000 \
+    --max-requests-jitter=100 \
+    "api:app"
