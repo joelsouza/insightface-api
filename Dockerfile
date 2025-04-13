@@ -18,6 +18,15 @@ RUN pip install -r requirements.txt
 
 COPY . .
 
+# Tornar o script executável
+RUN chmod +x start.sh
+
 EXPOSE 5001
 
-CMD ["python", "api.py"]
+# Configuração do Gunicorn
+ENV WORKERS=4
+ENV THREADS=2
+ENV TIMEOUT=120
+ENV MAX_REQUESTS=1000
+
+CMD ["./start.sh"]
