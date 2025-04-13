@@ -5,7 +5,7 @@ import os
 import logging
 import time
 import gc
-import base64
+import numpy as np
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
@@ -44,22 +44,14 @@ def represent():
         logging.warning("No image file provided.")
         return jsonify({"error": "No image file provided."}), 400
 
-    image_path = None
     img = None  # Initialize img to ensure cleanup
 
     try:
         file_bytes = image_file.read()
 
-        # Create tmp directory if it doesn't exist
-        tmp_dir = os.path.join(os.path.dirname(__file__), 'tmp')
-        os.makedirs(tmp_dir, exist_ok=True)
-
-        extension = image_file.content_type.split('/')[-1]
-        image_path = os.path.join(tmp_dir, f"{time.time()}.{extension}")
-        with open(image_path, 'wb') as f:
-            f.write(file_bytes)
-
-        img = cv2.imread(image_path)
+        # Decode image directly from memory
+        nparr = np.frombuffer(file_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
         logging.info("Running facial analysis...")
         start_time_analysis = time.time()
@@ -84,19 +76,9 @@ def represent():
         return jsonify({"embeddings": embeddings})
 
     finally:
-        # Clean up the temporary file
-        if image_path and os.path.exists(image_path):
-            try:
-                os.remove(image_path)
-            except Exception as e:
-                logging.error(f"Error removing temporary file: {e}")
-
         # Release OpenCV image memory
         if img is not None:
             del img
-
-        # Release memory
-        gc.collect()
 
 @app.route('/up', methods=['GET'])
 def up():
