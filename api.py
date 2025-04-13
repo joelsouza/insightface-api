@@ -45,6 +45,7 @@ def represent():
         return jsonify({"error": "No image file provided."}), 400
 
     image_path = None
+    img = None  # Initialize img to ensure cleanup
 
     try:
         file_bytes = image_file.read()
@@ -90,6 +91,10 @@ def represent():
                 os.remove(image_path)
             except Exception as e:
                 logging.error(f"Error removing temporary file: {e}")
+
+        # Release OpenCV image memory
+        if img is not None:
+            del img
 
         # Release memory
         gc.collect()
