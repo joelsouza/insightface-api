@@ -47,6 +47,10 @@ def represent():
         return jsonify({"error": "No image file provided."}), 400
 
     img = None  # Initialize img to ensure cleanup
+    file_bytes = None
+    nparr = None
+    faces = None
+    embeddings = []
 
     try:
         file_bytes = image_file.read()
@@ -62,7 +66,6 @@ def represent():
         logging.info(
             f"Facial analysis completed in {end_time_analysis - start_time_analysis:.2f} seconds. Faces found: {len(faces)}")
 
-        embeddings = []
         for face in faces:
             embeddings.append({
                 "embedding": face.embedding.tolist(),
@@ -78,10 +81,17 @@ def represent():
         return jsonify({"embeddings": embeddings})
 
     finally:
-        # Release OpenCV image memory
         if img is not None:
             del img
-        time.sleep(1)
+        if file_bytes is not None:
+            del file_bytes
+        if nparr is not None:
+            del nparr
+        if faces is not None:
+            del faces
+
+        embeddings.clear()
+
         gc.collect()
 
 @app.route('/up', methods=['GET'])
