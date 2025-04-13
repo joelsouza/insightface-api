@@ -5,6 +5,7 @@ import os
 import logging
 import time
 import gc
+import time
 import numpy as np
 
 logging.basicConfig(level=logging.INFO,
@@ -22,6 +23,7 @@ try:
     logging.info("Loading InsightFace model 'buffalo_l'...")
     start_time = time.time()
     face_app = insightface.app.FaceAnalysis(name='buffalo_l',
+                                            root='./insightface',
                                             allowed_modules=['detection', 'recognition'],
                                             providers=providers)
     face_app.prepare(ctx_id=0, det_size=(max_image_width, max_image_height), det_thresh=0.5)
@@ -79,6 +81,8 @@ def represent():
         # Release OpenCV image memory
         if img is not None:
             del img
+        time.sleep(1)
+        gc.collect()
 
 @app.route('/up', methods=['GET'])
 def up():
