@@ -19,23 +19,51 @@ providers = ['CPUExecutionProvider']
 max_image_width = 640
 max_image_height = 640
 
-try:
-    logging.info("Loading InsightFace model 'buffalo_l'...")
-    start_time = time.time()
-    face_app = insightface.app.FaceAnalysis(name='buffalo_l',
-                                            root='./insightface',
-                                            allowed_modules=['detection', 'recognition'],
-                                            providers=providers)
-    face_app.prepare(ctx_id=0, det_size=(max_image_width, max_image_height), det_thresh=0.5)
-    end_time = time.time()
-    logging.info(
-        f"InsightFace model loaded in {end_time - start_time:.2f} seconds.")
-except Exception as e:
-    logging.error(f"Error loading InsightFace model: {e}")
-    face_app = None
+# Add a counter to track number of requests
+request_counter = 0
+face_app = None
+
+def load_model():
+    """Load or reload the InsightFace model."""
+    global face_app
+
+    # Clean up existing model if it exists
+    if face_app is not None:
+        logging.info("Cleaning up existing model resources...")
+        del face_app
+        gc.collect()
+
+    try:
+        logging.info("Loading InsightFace model 'buffalo_l'...")
+        start_time = time.time()
+        face_app = insightface.app.FaceAnalysis(name='buffalo_l',
+                                                root='./insightface',
+                                                allowed_modules=['detection', 'recognition'],
+                                                providers=providers)
+        face_app.prepare(ctx_id=0, det_size=(max_image_width, max_image_height), det_thresh=0.5)
+        end_time = time.time()
+        logging.info(f"InsightFace model loaded in {end_time - start_time:.2f} seconds.")
+    except Exception as e:
+        logging.error(f"Error loading InsightFace model: {e}")
+        face_app = None
+
+# Initial model loading
+load_model()
 
 @app.route('/represent', methods=['POST'])
 def represent():
+    global request_counter, face_app
+
+    # Increment request counter
+    request_counter += 1
+    logging.info(f"Processing request #{request_counter}")
+
+    # Check if we need to reload the model (every 10 requests)
+    if request_counter >= 10:
+        logging.info("Request threshold reached. Releasing and reloading model to prevent memory leaks.")
+        load_model()
+        request_counter = 0
+
     if face_app is None:
         logging.error("InsightFace model was not loaded.")
         return jsonify({"error": "InsightFace model not initialized correctly."}), 500
