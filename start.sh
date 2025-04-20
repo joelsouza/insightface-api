@@ -7,7 +7,7 @@ export FLASK_ENV=production
 # Calculate optimal number of workers based on CPU cores
 # Formula: (2 × cores) + 1
 # For shared-cpu-8x with 8 vCPUs: (2 × 8) + 1 = 17
-WORKERS=8
+WORKERS=4
 
 # Number of threads per worker (good for I/O bound applications)
 # Since our app has both CPU-bound (face detection) and I/O-bound operations
