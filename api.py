@@ -5,7 +5,6 @@ import os
 import logging
 import time
 import gc
-import time
 import numpy as np
 
 logging.basicConfig(level=logging.INFO,
@@ -19,8 +18,6 @@ providers = ['CPUExecutionProvider']
 max_image_width = 640
 max_image_height = 640
 
-# Add a counter to track number of requests
-request_counter = 0
 face_app = None
 
 def load_model():
@@ -52,18 +49,6 @@ load_model()
 
 @app.route('/represent', methods=['POST'])
 def represent():
-    global request_counter, face_app
-
-    # Increment request counter
-    request_counter += 1
-    logging.info(f"Processing request #{request_counter}")
-
-    # Check if we need to reload the model (every 10 requests)
-    if request_counter >= 10:
-        logging.info("Request threshold reached. Releasing and reloading model to prevent memory leaks.")
-        load_model()
-        request_counter = 0
-
     if face_app is None:
         logging.error("InsightFace model was not loaded.")
         return jsonify({"error": "InsightFace model not initialized correctly."}), 500
@@ -74,18 +59,16 @@ def represent():
         logging.warning("No image file provided.")
         return jsonify({"error": "No image file provided."}), 400
 
-    img = None  # Initialize img to ensure cleanup
-    file_bytes = None
-    nparr = None
-    faces = None
-    embeddings = []
-
     try:
         file_bytes = image_file.read()
 
         # Decode image directly from memory
         nparr = np.frombuffer(file_bytes, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+        if img is None:
+            logging.warning("Failed to decode image file.")
+            return jsonify({"error": "Failed to decode image. Invalid or corrupted file."}), 400
 
         logging.info("Running facial analysis...")
         start_time_analysis = time.time()
@@ -94,6 +77,7 @@ def represent():
         logging.info(
             f"Facial analysis completed in {end_time_analysis - start_time_analysis:.2f} seconds. Faces found: {len(faces)}")
 
+        embeddings = []
         for face in faces:
             embeddings.append({
                 "embedding": face.embedding.tolist(),
@@ -108,19 +92,9 @@ def represent():
 
         return jsonify({"embeddings": embeddings})
 
-    finally:
-        if img is not None:
-            del img
-        if file_bytes is not None:
-            del file_bytes
-        if nparr is not None:
-            del nparr
-        if faces is not None:
-            del faces
-
-        embeddings.clear()
-
-        gc.collect()
+    except Exception as e:
+        logging.error(f"Error processing image: {e}")
+        return jsonify({"error": "Failed to process image."}), 500
 
 @app.route('/up', methods=['GET'])
 def up():
