@@ -56,4 +56,4 @@ exec gunicorn \
     --max-requests-jitter="$MAX_REQUESTS_JITTER" \
     --capture-output \
     --enable-stdio-inheritance \
-    "api_v2:get_app()"
+    "src.app:get_app()"
