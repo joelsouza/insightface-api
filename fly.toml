@@ -1,0 +1,18 @@
+app = "insightface-api"
+primary_region = "iad"
+
+[http_service]
+auto_start_machines = true
+auto_stop_machines = false
+force_https = true
+internal_port = 5001
+min_machines_running = 1
+processes = [ "app" ]
+
+  [[http_service.checks]]
+  grace_period = "15s"
+  path = "/up"
+
+[[vm]]
+memory = "4gb"
+size = "shared-cpu-8x"
