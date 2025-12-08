@@ -1,34 +1,52 @@
-FROM python:3.12-slim
+# Build stage - includes build tools for compiling dependencies
+FROM python:3.12-slim AS builder
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
-    libgl1 \
-    libglx-mesa0 \
-    libglib2.0-0 \
     build-essential \
     cmake \
     python3-dev \
     libopenblas-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# Install Python dependencies (use prod requirements for smaller image)
+COPY requirements-prod.txt .
+RUN pip wheel --no-cache-dir --wheel-dir=/wheels -r requirements-prod.txt
+
+
+# Runtime stage - minimal image for production
+FROM python:3.12-slim AS runtime
+
+# Install only runtime dependencies (no build tools)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 \
+    libglx-mesa0 \
+    libglib2.0-0 \
+    libopenblas0 \
     libsm6 \
     libxext6 \
-    wget \
-    unzip \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean \
+    && rm -rf /var/cache/apt/archives/*
 
 WORKDIR /app
 
-COPY requirements.txt .
+# Install wheels from builder stage
+COPY --from=builder /wheels /wheels
+RUN pip install --no-cache-dir --no-index /wheels/* \
+    && rm -rf /wheels
 
-RUN pip install -r requirements.txt
-
-COPY . .
+# Copy application code
+COPY src/ ./src/
+COPY bin/ ./bin/
 
 RUN chmod +x bin/start
 
 EXPOSE 5001
 
-# New Relic configuration
-ENV NEW_RELIC_LICENSE_KEY=""
+# New Relic app name default (license key should be passed at runtime)
 ENV NEW_RELIC_APP_NAME="InsightFace API"
 
 CMD ["./bin/start"]
