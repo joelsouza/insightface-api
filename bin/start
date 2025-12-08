@@ -22,7 +22,7 @@ set -e
 
 # Server configuration
 PORT="${PORT:-5001}"
-WORKERS="${WORKERS:-4}"
+WORKERS="${WORKERS:-2}"
 THREADS="${THREADS:-1}"
 TIMEOUT="${TIMEOUT:-60}"
 MAX_REQUESTS="${MAX_REQUESTS:-100}"
