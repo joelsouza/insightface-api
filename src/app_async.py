@@ -1,0 +1,189 @@
+"""
+Quart application factory for the InsightFace API (async version).
+
+This module provides the application factory pattern for creating
+and configuring the Quart application with async support.
+
+The key difference from the Flask version is that this uses a single
+worker with a thread pool for inference, allowing the model to be
+loaded once and shared across all requests.
+
+Example:
+    # Production with Uvicorn
+    uvicorn "src.app_async:get_app" --factory --host 0.0.0.0 --port 5001
+"""
+
+from __future__ import annotations
+
+import logging
+import time
+import uuid
+from typing import Optional
+
+from quart import Quart, Response, g
+from werkzeug.exceptions import HTTPException
+
+from src.api.routes_async import api_blueprint_async
+from src.config import Settings, setup_logging
+from src.exceptions import APIError
+from src.models import ErrorResponse
+from src.services import InferenceExecutor, ModelManager
+
+
+def create_async_app(settings: Optional[Settings] = None) -> Quart:
+    """
+    Create and configure the Quart application.
+
+    This factory function creates a new Quart application instance with
+    all routes, error handlers, and middleware configured.
+
+    Args:
+        settings: Application settings. If not provided, settings are
+                 loaded from environment variables.
+
+    Returns:
+        Configured Quart application instance
+    """
+    if settings is None:
+        settings = Settings()
+
+    # Setup logging
+    logger = setup_logging(settings.log_level)
+
+    # Create Quart app
+    app = Quart(__name__)
+    app.config["MAX_CONTENT_LENGTH"] = settings.max_content_length
+
+    # Store settings and logger in app config for access in routes
+    app.config["settings"] = settings
+    app.config["logger"] = logger
+
+    # Initialize model manager (single instance for all requests)
+    model_manager = ModelManager(settings=settings, logger=logger)
+    model_manager.load()
+    app.config["model_manager"] = model_manager
+
+    # Initialize inference executor (thread pool for CPU-bound inference)
+    inference_executor = InferenceExecutor(max_workers=4)
+    app.config["inference_executor"] = inference_executor
+
+    # Register blueprints
+    app.register_blueprint(api_blueprint_async)
+
+    # Register error handlers
+    _register_error_handlers(app, logger)
+
+    # Register request hooks
+    _register_request_hooks(app)
+
+    # Register shutdown handler to cleanup executor
+    @app.teardown_appcontext
+    def shutdown_executor(exception: Optional[BaseException] = None) -> None:
+        pass  # Executor cleanup handled at app level
+
+    logger.info("Async application initialized successfully")
+
+    return app
+
+
+def _register_error_handlers(app: Quart, logger: logging.Logger) -> None:
+    """
+    Register error handlers with the Quart application.
+
+    Args:
+        app: Quart application instance
+        logger: Logger for error messages
+    """
+
+    @app.errorhandler(APIError)
+    async def handle_api_error(error: APIError) -> tuple[dict, int]:
+        """Handle custom API errors."""
+        request_id = getattr(g, "request_id", None)
+        logger.warning(f"[{request_id}] {error.error_code}: {error.message}")
+
+        response = ErrorResponse(
+            error=error.message,
+            error_code=error.error_code,
+            request_id=request_id,
+        )
+        return response.model_dump(), error.status_code
+
+    @app.errorhandler(HTTPException)
+    async def handle_http_exception(error: HTTPException) -> tuple[dict, int]:
+        """Handle Werkzeug HTTP exceptions."""
+        request_id = getattr(g, "request_id", None)
+        logger.warning(f"[{request_id}] HTTP {error.code}: {error.description}")
+
+        response = ErrorResponse(
+            error=error.description or "An error occurred",
+            error_code=f"HTTP_{error.code}",
+            request_id=request_id,
+        )
+        return response.model_dump(), error.code or 500
+
+    @app.errorhandler(Exception)
+    async def handle_exception(error: Exception) -> tuple[dict, int]:
+        """Handle unexpected exceptions."""
+        request_id = getattr(g, "request_id", None)
+        logger.exception(f"[{request_id}] Unexpected error: {error}")
+
+        response = ErrorResponse(
+            error="An internal error occurred",
+            error_code="INTERNAL_ERROR",
+            request_id=request_id,
+        )
+        return response.model_dump(), 500
+
+
+def _register_request_hooks(app: Quart) -> None:
+    """
+    Register before/after request hooks.
+
+    Args:
+        app: Quart application instance
+    """
+
+    @app.before_request
+    async def before_request() -> None:
+        """Generate request ID and store start time."""
+        g.request_id = str(uuid.uuid4())[:8]
+        g.start_time = time.perf_counter()
+
+    @app.after_request
+    async def after_request(response: Response) -> Response:
+        """Add request ID header to response."""
+        if hasattr(g, "request_id"):
+            response.headers["X-Request-ID"] = g.request_id
+        return response
+
+
+def get_app() -> Quart:
+    """
+    Get or create the Quart application instance (lazy loaded).
+
+    This function provides lazy initialization, allowing the module to be
+    imported without triggering model loading. Useful for testing and
+    for ASGI servers that need a callable.
+
+    Usage with Uvicorn:
+        uvicorn "src.app_async:get_app" --factory
+
+    Returns:
+        Quart application instance
+    """
+    global _app_instance
+    if _app_instance is None:
+        _app_instance = create_async_app()
+    return _app_instance
+
+
+# Global app instance holder (lazy loaded via get_app())
+_app_instance: Optional[Quart] = None
+
+
+if __name__ == "__main__":
+    import asyncio
+
+    settings = Settings()
+    app = create_async_app(settings)
+    asyncio.run(app.run_task(host="0.0.0.0", port=settings.port))
