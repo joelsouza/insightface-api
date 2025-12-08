@@ -12,7 +12,7 @@ Cython==3.0.12
 easydict==1.13
 Flask==3.1.0
 flatbuffers==25.2.10
-fonttools==4.57.0
+fonttools==4.61.0
 humanfriendly==10.0
 idna==3.10
 imageio==2.37.0
