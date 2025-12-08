@@ -267,3 +267,6 @@ tmp/
 
 insightface/
 # End of https://www.toptal.com/developers/gitignore/api/python,flask
+
+# fly.toml
+fly.toml
