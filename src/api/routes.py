@@ -145,7 +145,7 @@ def represent() -> tuple[Response, int]:
                     "embedding": [0.1, 0.2, ...],
                     "bbox": [100, 100, 200, 200],
                     "keypoints": [[120, 130], ...],
-                    "detection_score": 0.95,
+                    "det_score": 0.95,
                     "gender": 1,
                     "age": 30
                 }

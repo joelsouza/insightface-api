@@ -24,7 +24,7 @@ class FaceEmbedding(BaseModel):
         embedding: 512-dimensional face embedding vector
         bbox: Bounding box coordinates [x1, y1, x2, y2]
         keypoints: Facial landmark coordinates (5 points: eyes, nose, mouth corners)
-        detection_score: Confidence score of face detection (0.0 to 1.0)
+        det_score: Confidence score of face detection (0.0 to 1.0)
         gender: Predicted gender (0=female, 1=male) if available
         age: Predicted age if available
 
@@ -33,7 +33,7 @@ class FaceEmbedding(BaseModel):
         ...     embedding=[0.1] * 512,
         ...     bbox=[100, 100, 200, 200],
         ...     keypoints=[[120, 130], [180, 130], [150, 160], [130, 190], [170, 190]],
-        ...     detection_score=0.95,
+        ...     det_score=0.95,
         ...     gender=1,
         ...     age=30
         ... )
@@ -42,7 +42,7 @@ class FaceEmbedding(BaseModel):
     embedding: list[float] = Field(description="512-dimensional face embedding")
     bbox: list[int] = Field(description="Bounding box [x1, y1, x2, y2]")
     keypoints: list[list[float]] = Field(description="Facial landmark coordinates")
-    detection_score: float = Field(ge=0.0, le=1.0, description="Detection confidence")
+    det_score: float = Field(ge=0.0, le=1.0, description="Detection confidence")
     gender: Optional[int] = Field(default=None, description="Gender (0=F, 1=M)")
     age: Optional[int] = Field(default=None, ge=0, le=120, description="Predicted age")
 

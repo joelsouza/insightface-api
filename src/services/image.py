@@ -158,7 +158,7 @@ def extract_face_data(face: Any) -> FaceEmbedding:
         embedding=face.embedding.tolist(),
         bbox=face.bbox.astype(int).tolist(),
         keypoints=face.kps.tolist(),
-        detection_score=float(face.det_score),
+        det_score=float(face.det_score),
         gender=(
             int(face.gender)
             if hasattr(face, "gender") and face.gender is not None
