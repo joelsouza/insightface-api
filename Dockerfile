@@ -1,4 +1,4 @@
-FROM python:3.13-slim
+FROM python:3.12-slim
 
 RUN apt-get update && apt-get install -y \
     git \
@@ -7,6 +7,10 @@ RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
     build-essential \
     cmake \
+    python3-dev \
+    libopenblas-dev \
+    libsm6 \
+    libxext6 \
     wget \
     unzip \
     && rm -rf /var/lib/apt/lists/*
