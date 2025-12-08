@@ -14,6 +14,8 @@
 #   LOG_LEVEL             - Logging level (default: info)
 #   MAX_IMAGE_DIMENSION   - Max image size for detection (default: 640)
 #   DETECTION_THRESHOLD   - Face detection threshold (default: 0.5)
+#   NEW_RELIC_LICENSE_KEY - New Relic license key (enables APM when set)
+#   NEW_RELIC_APP_NAME    - New Relic application name (default: InsightFace API)
 #
 
 set -e
@@ -40,10 +42,20 @@ echo "  Threads: $THREADS"
 echo "  Timeout: ${TIMEOUT}s"
 echo "  Max Image Dimension: $MAX_IMAGE_DIMENSION"
 echo "  Detection Threshold: $DETECTION_THRESHOLD"
+
+# New Relic configuration
+NEWRELIC_CMD=""
+if [ -n "$NEW_RELIC_LICENSE_KEY" ]; then
+    export NEW_RELIC_APP_NAME="${NEW_RELIC_APP_NAME:-InsightFace API}"
+    NEWRELIC_CMD="newrelic-admin run-program"
+    echo "  New Relic: enabled (${NEW_RELIC_APP_NAME})"
+else
+    echo "  New Relic: disabled"
+fi
 echo ""
 
 # Start Gunicorn with the application factory
-exec gunicorn \
+exec $NEWRELIC_CMD gunicorn \
     --workers="$WORKERS" \
     --threads="$THREADS" \
     --worker-class=gthread \

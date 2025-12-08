@@ -18,9 +18,12 @@ RUN pip install -r requirements.txt
 
 COPY . .
 
-# Tornar o script executável
-RUN chmod +x start.sh
+RUN chmod +x bin/start
 
 EXPOSE 5001
 
-CMD ["./start.sh"]
+# New Relic configuration
+ENV NEW_RELIC_LICENSE_KEY=""
+ENV NEW_RELIC_APP_NAME="InsightFace API"
+
+CMD ["./bin/start"]
