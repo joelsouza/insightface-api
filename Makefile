@@ -9,4 +9,4 @@ run:
 	./bin/start
 
 test:
-	./venv/bin/python -m pytest -s tests
+	./venv/bin/python -m pytest -v ./tests
