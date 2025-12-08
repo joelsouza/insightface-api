@@ -24,12 +24,12 @@ class TestFaceEmbedding:
             embedding=[0.1] * 512,
             bbox=[100, 100, 200, 200],
             keypoints=[[1.0, 2.0]] * 5,
-            detection_score=0.95,
+            det_score=0.95,
             gender=1,
             age=30,
         )
         assert len(embedding.embedding) == 512
-        assert embedding.detection_score == 0.95
+        assert embedding.det_score == 0.95
         assert embedding.gender == 1
         assert embedding.age == 30
 
@@ -39,7 +39,7 @@ class TestFaceEmbedding:
             embedding=[0.1] * 512,
             bbox=[100, 100, 200, 200],
             keypoints=[[1.0, 2.0]] * 5,
-            detection_score=0.8,
+            det_score=0.8,
         )
         assert embedding.gender is None
         assert embedding.age is None
@@ -51,7 +51,7 @@ class TestFaceEmbedding:
                 embedding=[0.1] * 512,
                 bbox=[100, 100, 200, 200],
                 keypoints=[[1.0, 2.0]] * 5,
-                detection_score=1.5,  # Invalid
+                det_score=1.5,  # Invalid
             )
 
 
@@ -76,7 +76,7 @@ class TestRepresentResponse:
             embedding=[0.1] * 512,
             bbox=[100, 100, 200, 200],
             keypoints=[[1.0, 2.0]] * 5,
-            detection_score=0.9,
+            det_score=0.9,
         )
         response = RepresentResponse(
             embeddings=[face],

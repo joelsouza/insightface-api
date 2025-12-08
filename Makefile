@@ -1,4 +1,4 @@
-.PHONY: setup run
+.PHONY: setup run test
 
 setup:
 	python3 -m venv venv
@@ -7,3 +7,6 @@ setup:
 
 run:
 	./bin/start
+
+test:
+	./venv/bin/python -m pytest -s tests

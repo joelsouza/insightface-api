@@ -112,7 +112,7 @@ class TestExtractFaceData:
         """Test face data extraction with all attributes."""
         result = extract_face_data(mock_face)
         assert len(result.embedding) == 512
-        assert result.detection_score == 0.95
+        assert result.det_score == 0.95
         assert result.gender == 1
         assert result.age == 30
 
