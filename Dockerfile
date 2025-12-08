@@ -11,9 +11,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /build
 
-# Install Python dependencies (use prod requirements for smaller image)
-COPY requirements-prod.txt .
-RUN pip wheel --no-cache-dir --wheel-dir=/wheels -r requirements-prod.txt
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip wheel --no-cache-dir --wheel-dir=/wheels -r requirements.txt
 
 
 # Runtime stage - minimal image for production
