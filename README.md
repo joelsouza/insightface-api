@@ -1,118 +1,107 @@
 # InsightFace API
 
-A simple API built with Flask for facial embedding extraction using InsightFace.
+A REST API for face detection and facial embedding extraction. Send an image, get back detected faces with 512-dimensional embeddings for face recognition and verification tasks.
 
-## Description
+## What It Does
 
-This API uses the InsightFace library to detect faces in images and extract facial embedding vectors, which can be used for facial recognition, identity verification, and other related use cases.
+- Detects faces in images and returns bounding boxes
+- Extracts facial embeddings for face recognition and matching
+- Provides facial landmarks (eyes, nose, mouth corners)
+- Returns confidence scores for detected faces
+- Predicts age and gender attributes
 
-## Features
+## Getting Started
 
-- Facial detection in images
-- Facial embedding extraction
-- Additional information such as bounding box, facial keypoints, and detection scores
-- Support for base64 encoded images
+### Requirements
 
-## Requirements
+- Python 3.12+
+- Docker (optional)
 
-- Python 3.x
-- Flask
-- InsightFace
-- OpenCV
-- Other requirements listed in `requirements.txt`
-
-## Installation
-
-### Using Docker (Recommended)
+### Installation
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-username/insightface-api.git
-cd insightface-api
-
-# Build the Docker image
-docker build -t insightface-api .
-
-# Run the container
-docker run -p 5001:5001 insightface-api
-```
-
-### Local Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/your-username/insightface-api.git
-cd insightface-api
-
-# Install dependencies
 pip install -r requirements.txt
-
-# Run the API
-python api.py
 ```
 
-## API Usage
+### Run Locally
 
-### Endpoint: `/represent`
+```bash
+# Development server
+python -m src.app
 
-This endpoint receives a base64 encoded image and returns facial embeddings and other information for each detected face.
-
-**Method:** POST
-
-**Parameters:**
-- `image_data`: Base64 encoded image
-
-**Request Example:**
-
-```python
-import requests
-import base64
-
-# Read the image and encode in base64
-with open("image.jpg", "rb") as img_file:
-    img_data = base64.b64encode(img_file.read()).decode('utf-8')
-
-# Send request to the API
-response = requests.post(
-    "http://localhost:5001/represent",
-    data={"image_data": img_data}
-)
-
-# Process the response
-result = response.json()
-print(f"Faces detected: {len(result['embeddings'])}")
+# Production with Gunicorn
+./bin/start
 ```
 
-**Response Example:**
-
-```json
-{
-  "embeddings": [
-    {
-      "embedding": [0.023, -0.045, 0.012, ...],
-      "bbox": [142.5, 187.2, 375.8, 420.3],
-      "kps": [[200.1, 250.3], [240.4, 251.2], ...],
-      "det_score": 0.998
-    },
-    {
-      "embedding": [-0.011, 0.026, 0.157, ...],
-      "bbox": [512.6, 189.5, 745.1, 422.7],
-      "kps": [[580.3, 253.1], [620.8, 254.6], ...],
-      "det_score": 0.987
-    }
-  ]
-}
-```
+The API will be available at `http://localhost:5001`
 
 ## Configuration
 
-By default, the API uses only CPU for inference. If you have a GPU available, modify the `providers` variable in `api.py`:
+Set environment variables to customize behavior:
 
-```python
-providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+```bash
+PORT=5001                              # Server port
+LOG_LEVEL=INFO                         # Logging verbosity
+MAX_IMAGE_DIMENSION=640                # Image resolution for detection
+DETECTION_THRESHOLD=0.5                # Face confidence threshold (0-1)
+EXECUTION_PROVIDER=CPUExecutionProvider  # CPUExecutionProvider, CUDAExecutionProvider, TensorrtExecutionProvider
+NEW_RELIC_LICENSE_KEY=your_key         # Optional: Enable New Relic APM
 ```
 
-## Notes
+## API Endpoints
 
-- The InsightFace model used is 'buffalo_l', which includes detection and recognition modules.
-- The default port is 5001, but it can be configured through the PORT environment variable.
+### `GET /`
+Returns API info and available endpoints.
+
+### `GET /health`
+Detailed health check with model status and uptime.
+
+```bash
+curl http://localhost:5001/health
+```
+
+### `POST /represent`
+Detect faces and extract embeddings from an image file.
+
+```bash
+curl -X POST -F "file=@image.jpg" http://localhost:5001/represent
+```
+
+**Response:**
+```json
+{
+  "results": [
+    {
+      "embedding": [0.123, -0.456, ...],
+      "bbox": [100, 150, 200, 300],
+      "det_score": 0.99,
+      "landmarks": [[110, 160], [190, 170], ...],
+      "age": 28,
+      "gender": "M"
+    }
+  ],
+  "request_id": "uuid-string",
+  "processing_time_ms": 45
+}
+```
+
+## Docker
+
+Build and run with Docker:
+
+```bash
+docker build -t insightface-api .
+docker run -p 5001:5001 insightface-api
+```
+
+## Testing
+
+```bash
+pytest tests/
+```
+
+## Performance Notes
+
+- First request takes longer as the model loads (~2-3 seconds)
+- GPU acceleration available via CUDA or TensorRT providers
+- Typical inference time: 50-100ms per image on CPU
