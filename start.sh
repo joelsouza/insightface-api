@@ -17,16 +17,33 @@ THREADS=1
 # Set timeout (in seconds)
 TIMEOUT=60
 
-# Start Gunicorn
-exec gunicorn \
-    --workers=$WORKERS \
-    --threads=$THREADS \
-    --worker-class=gthread \
-    --timeout=$TIMEOUT \
-    --bind=0.0.0.0:5001 \
-    --access-logfile=- \
-    --error-logfile=- \
-    --log-level=info \
-    --max-requests=50 \
-    --max-requests-jitter=100 \
-    "api:app"
+# Check if NewRelic is configured
+if [ -n "$NEW_RELIC_LICENSE_KEY" ]; then
+    echo "Starting with NewRelic instrumentation..."
+    exec newrelic-admin run-program gunicorn \
+        --workers=$WORKERS \
+        --threads=$THREADS \
+        --worker-class=gthread \
+        --timeout=$TIMEOUT \
+        --bind=0.0.0.0:5001 \
+        --access-logfile=- \
+        --error-logfile=- \
+        --log-level=info \
+        --max-requests=50 \
+        --max-requests-jitter=100 \
+        "api:app"
+else
+    echo "NEW_RELIC_LICENSE_KEY not set. Starting without NewRelic..."
+    exec gunicorn \
+        --workers=$WORKERS \
+        --threads=$THREADS \
+        --worker-class=gthread \
+        --timeout=$TIMEOUT \
+        --bind=0.0.0.0:5001 \
+        --access-logfile=- \
+        --error-logfile=- \
+        --log-level=info \
+        --max-requests=50 \
+        --max-requests-jitter=100 \
+        "api:app"
+fi

@@ -1,6 +1,16 @@
 app = "insightface-api"
 primary_region = "iad"
 
+[build]
+
+[env]
+NEW_RELIC_APP_NAME = "InsightFace API"
+NEW_RELIC_ENVIRONMENT = "production"
+NEW_RELIC_LOG = "stderr"
+NEW_RELIC_LOG_LEVEL = "info"
+NEW_RELIC_DISTRIBUTED_TRACING_ENABLED = "true"
+NEW_RELIC_CONFIG_FILE = "/app/newrelic.ini"
+
 [http_service]
 auto_start_machines = true
 auto_stop_machines = false

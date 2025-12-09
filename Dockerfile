@@ -17,10 +17,21 @@ COPY requirements.txt .
 
 RUN pip install -r requirements.txt
 
+# Generate NewRelic admin script for gunicorn integration
+RUN newrelic-admin generate-config placeholder_key newrelic.ini.template || true
+
 COPY . .
 
 # Tornar o script executável
 RUN chmod +x start.sh
+
+# Set NewRelic environment variables (override at runtime)
+ENV NEW_RELIC_CONFIG_FILE=/app/newrelic.ini
+ENV NEW_RELIC_ENVIRONMENT=production
+ENV NEW_RELIC_LOG=stderr
+ENV NEW_RELIC_LOG_LEVEL=info
+ENV NEW_RELIC_DISTRIBUTED_TRACING_ENABLED=true
+ENV NEW_RELIC_APP_NAME="InsightFace API"
 
 EXPOSE 5001
 
