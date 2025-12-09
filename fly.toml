@@ -20,7 +20,9 @@ min_machines_running = 1
 processes = [ "app" ]
 
   [[http_service.checks]]
-  grace_period = "15s"
+  grace_period = "120s"
+  interval = "30s"
+  timeout = "10s"
   path = "/up"
 
 [[vm]]
