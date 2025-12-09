@@ -1,31 +1,39 @@
-FROM python:3.12-slim
+# Build stage - includes compilation tools
+FROM python:3.12-slim AS builder
 
 RUN apt-get update && apt-get install -y \
-    git \
-    libgl1 \
-    libglx-mesa0 \
-    libglib2.0-0 \
     build-essential \
     cmake \
-    wget \
-    unzip \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+WORKDIR /build
 
 COPY requirements.txt .
 
-RUN pip install -r requirements.txt
+# Install packages to a specific directory for easy copying
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
-# Generate NewRelic admin script for gunicorn integration
-RUN newrelic-admin generate-config placeholder_key newrelic.ini.template || true
+# Runtime stage - minimal image
+FROM python:3.12-slim
+
+# Only runtime dependencies (no build tools)
+RUN apt-get update && apt-get install -y \
+    libgl1 \
+    libglx-mesa0 \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+WORKDIR /app
+
+# Copy installed packages from builder
+COPY --from=builder /install /usr/local
 
 COPY . .
 
-# Tornar o script executável
 RUN chmod +x start.sh
 
-# Set NewRelic environment variables (override at runtime)
+# NewRelic environment variables
 ENV NEW_RELIC_CONFIG_FILE=/app/newrelic.ini
 ENV NEW_RELIC_ENVIRONMENT=production
 ENV NEW_RELIC_LOG=stderr

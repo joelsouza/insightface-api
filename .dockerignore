@@ -1,0 +1,42 @@
+# Git
+.git
+.gitignore
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+*.egg-info/
+.eggs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Model archives (already extracted)
+*.zip
+
+# Documentation and logs
+*.md
+WORK_LOG.md
+*.log
+
+# Development files
+.env
+.env.*
+*.ini.template
+
+# Plans
+.claude/
