@@ -20,7 +20,9 @@ RUN pip wheel --no-cache-dir --wheel-dir=/wheels -r requirements.txt
 FROM python:3.12-slim AS runtime
 
 # Install only runtime dependencies (no build tools)
+# curl is needed for health checks
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
     libgl1 \
     libglx-mesa0 \
     libglib2.0-0 \
@@ -30,6 +32,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean \
     && rm -rf /var/cache/apt/archives/*
+
+# Create non-root user for security
+RUN useradd --create-home --shell /bin/bash --uid 1000 appuser
 
 WORKDIR /app
 
@@ -42,11 +47,23 @@ RUN pip install --no-cache-dir --no-index /wheels/* \
 COPY src/ ./src/
 COPY bin/ ./bin/
 
-RUN chmod +x bin/start
+# Set ownership and permissions
+RUN chmod +x bin/start \
+    && chown -R appuser:appuser /app
+
+# Create model cache directory with correct permissions
+RUN mkdir -p /app/insightface && chown appuser:appuser /app/insightface
 
 EXPOSE 5001
 
 # New Relic app name default (license key should be passed at runtime)
 ENV NEW_RELIC_APP_NAME="InsightFace API"
+
+# Switch to non-root user
+USER appuser
+
+# Health check - waits for model to load (60s start period)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:5001/up || exit 1
 
 CMD ["./bin/start"]
