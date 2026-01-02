@@ -1,7 +1,8 @@
 """
 Pytest configuration and shared fixtures.
 
-This module provides fixtures that are shared across all test modules.
+This module provides fixtures that are shared across all test modules,
+including both Flask (sync) and Quart (async) test clients.
 """
 
 from __future__ import annotations
@@ -12,16 +13,19 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
+import pytest_asyncio
 from flask import Flask
 from flask.testing import FlaskClient
+from quart import Quart
 
 # Mock insightface before importing src modules
 sys.modules["insightface"] = MagicMock()
 sys.modules["insightface.app"] = MagicMock()
 
 from src.app import create_app
+from src.app_async import create_async_app
 from src.config import Settings
-from src.services import ModelManager
+from src.services import InferenceExecutor, ModelManager
 
 
 @pytest.fixture
@@ -120,3 +124,37 @@ def app(settings: Settings) -> Flask:
 def client(app: Flask) -> FlaskClient:
     """Create test client."""
     return app.test_client()
+
+
+# ============================================================================
+# Async (Quart) Fixtures
+# ============================================================================
+
+
+@pytest_asyncio.fixture
+async def async_app(settings: Settings) -> Quart:
+    """Create test Quart application with mocked model."""
+    from unittest.mock import patch
+
+    with patch.object(ModelManager, "load", return_value=True):
+        test_app = create_async_app(settings)
+        test_app.config["model_manager"].is_loaded = True
+        test_app.config["model_manager"].load_time = 1000.0
+        yield test_app
+        # Cleanup executor
+        executor = test_app.config.get("inference_executor")
+        if executor:
+            executor.shutdown(wait=False)
+
+
+@pytest_asyncio.fixture
+async def async_client(async_app: Quart):
+    """Create async test client."""
+    async with async_app.test_client() as client:
+        yield client
+
+
+@pytest.fixture
+def mock_inference_executor() -> InferenceExecutor:
+    """Create a test inference executor with short timeout."""
+    return InferenceExecutor(max_workers=2, timeout=5.0)

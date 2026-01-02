@@ -44,8 +44,8 @@ class TestFaceEmbedding:
         assert embedding.gender is None
         assert embedding.age is None
 
-    def test_detection_score_bounds(self) -> None:
-        """Test detection_score validation."""
+    def test_det_score_bounds(self) -> None:
+        """Test det_score validation."""
         with pytest.raises(ValidationError):
             FaceEmbedding(
                 embedding=[0.1] * 512,
