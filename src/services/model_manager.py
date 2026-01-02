@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import gc
 import logging
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Optional
@@ -56,13 +57,14 @@ class ModelManager:
     load_time: Optional[float] = field(default=None)
     load_duration: Optional[float] = field(default=None)
     _initialization_error: Optional[str] = field(default=None)
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def load(self) -> bool:
         """
         Load the InsightFace model.
 
         Initializes the face analysis model with the configured settings.
-        The import is deferred to allow mocking in tests.
+        The import is deferred to allow mocking in tests. Thread-safe via lock.
 
         Returns:
             True if loading succeeded, False otherwise
@@ -71,58 +73,67 @@ class ModelManager:
             If loading fails, the error message is stored in _initialization_error
             and will be included in subsequent ModelNotReadyError exceptions.
         """
-        # Defer import to allow mocking in tests
-        import insightface
+        with self._lock:
+            # Check if already loaded (another thread may have loaded it)
+            if self.is_loaded:
+                return True
 
-        self.logger.info(f"Loading InsightFace model '{self.settings.model_name}'...")
-        start_time = time.perf_counter()
-
-        try:
-            self.model = insightface.app.FaceAnalysis(
-                name=self.settings.model_name,
-                root=self.settings.model_root,
-                allowed_modules=["detection", "recognition"],
-                providers=[self.settings.execution_provider.value],
-            )
-            self.model.prepare(
-                ctx_id=0,
-                det_size=(
-                    self.settings.max_image_dimension,
-                    self.settings.max_image_dimension,
-                ),
-                det_thresh=self.settings.detection_threshold,
-            )
-
-            self.load_duration = time.perf_counter() - start_time
-            self.load_time = time.time()
-            self.is_loaded = True
-            self._initialization_error = None
+            # Defer import to allow mocking in tests
+            import insightface
 
             self.logger.info(
-                f"Model loaded successfully in {self.load_duration:.2f}s"
+                f"Loading InsightFace model '{self.settings.model_name}'..."
             )
-            return True
+            start_time = time.perf_counter()
 
-        except Exception as e:
-            self.load_duration = time.perf_counter() - start_time
-            self.is_loaded = False
-            self._initialization_error = str(e)
-            self.logger.error(f"Failed to load model: {e}")
-            return False
+            try:
+                self.model = insightface.app.FaceAnalysis(
+                    name=self.settings.model_name,
+                    root=self.settings.model_root,
+                    allowed_modules=["detection", "recognition"],
+                    providers=[self.settings.execution_provider.value],
+                )
+                self.model.prepare(
+                    ctx_id=0,
+                    det_size=(
+                        self.settings.max_image_dimension,
+                        self.settings.max_image_dimension,
+                    ),
+                    det_thresh=self.settings.detection_threshold,
+                )
+
+                self.load_duration = time.perf_counter() - start_time
+                self.load_time = time.time()
+                self.is_loaded = True
+                self._initialization_error = None
+
+                self.logger.info(
+                    f"Model loaded successfully in {self.load_duration:.2f}s"
+                )
+                return True
+
+            except Exception as e:
+                self.load_duration = time.perf_counter() - start_time
+                self.is_loaded = False
+                self._initialization_error = str(e)
+                self.logger.exception(f"Failed to load model: {e}")
+                return False
 
     def unload(self) -> None:
         """
         Release model resources and trigger garbage collection.
 
         This method should be called when shutting down the application
-        or when the model needs to be reloaded.
+        or when the model needs to be reloaded. Thread-safe via lock.
         """
-        if self.model is not None:
-            self.logger.info("Unloading model and releasing resources...")
-            del self.model
-            self.model = None
-            self.is_loaded = False
-            gc.collect()
+        with self._lock:
+            if self.model is not None:
+                self.logger.info("Unloading model and releasing resources...")
+                del self.model
+                self.model = None
+                self.is_loaded = False
+                self.load_time = None
+                gc.collect()
 
     def get_faces(self, image: np.ndarray) -> list[Any]:
         """
