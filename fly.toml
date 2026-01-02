@@ -26,5 +26,5 @@ processes = [ "app" ]
   path = "/up"
 
 [[vm]]
-memory = "2gb"
+memory = "3gb"
 size = "shared-cpu-4x"
