@@ -47,6 +47,8 @@ class Settings(BaseSettings):
         execution_provider: ONNX execution provider (default: CPU)
         log_level: Logging level (default: INFO)
         request_timeout: Request processing timeout in seconds (default: 30)
+        inference_pool_size: Number of threads for inference executor (default: 4)
+        inference_timeout: Timeout for inference operations in seconds (default: 30)
 
     Example:
         >>> settings = Settings()
@@ -66,6 +68,8 @@ class Settings(BaseSettings):
     execution_provider: ExecutionProvider = Field(default=ExecutionProvider.CPU)
     log_level: str = Field(default="INFO")
     request_timeout: float = Field(default=30.0, ge=1.0)
+    inference_pool_size: int = Field(default=4, ge=1, le=32)
+    inference_timeout: float = Field(default=30.0, ge=1.0, le=300.0)
 
     model_config = {
         "env_prefix": "",
