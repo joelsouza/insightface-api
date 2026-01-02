@@ -1,0 +1,211 @@
+"""
+Tests for thread safety and concurrency behavior.
+
+These tests verify that the ModelManager and InferenceExecutor
+handle concurrent operations safely.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+# Import the mocked insightface module for proper patching
+import insightface
+
+from src.config import Settings
+from src.exceptions import InferenceTimeoutError
+from src.services import InferenceExecutor, ModelManager
+
+
+class TestModelManagerThreadSafety:
+    """Tests for ModelManager thread safety."""
+
+    def test_concurrent_load_calls_only_load_once(self, settings: Settings):
+        """Test that concurrent load() calls only initialize model once."""
+        load_count = 0
+        load_lock = threading.Lock()
+
+        def mock_load_model(*args, **kwargs):
+            nonlocal load_count
+            with load_lock:
+                load_count += 1
+            time.sleep(0.1)  # Simulate model loading time
+            mock_model = MagicMock()
+            mock_model.prepare = MagicMock()
+            return mock_model
+
+        logger = MagicMock()
+        manager = ModelManager(settings=settings, logger=logger)
+
+        with patch.object(insightface.app, "FaceAnalysis", side_effect=mock_load_model):
+            # Start multiple threads trying to load
+            threads = []
+            for _ in range(5):
+                t = threading.Thread(target=manager.load)
+                threads.append(t)
+                t.start()
+
+            # Wait for all threads
+            for t in threads:
+                t.join()
+
+            # Model should only be loaded once due to lock
+            assert load_count == 1
+            assert manager.is_loaded is True
+
+    def test_load_unload_thread_safety(self, settings: Settings):
+        """Test that load/unload operations don't race."""
+        logger = MagicMock()
+        manager = ModelManager(settings=settings, logger=logger)
+
+        def mock_load(*args, **kwargs):
+            mock_model = MagicMock()
+            mock_model.prepare = MagicMock()
+            return mock_model
+
+        with patch.object(insightface.app, "FaceAnalysis", side_effect=mock_load):
+            # Load first
+            manager.load()
+            assert manager.is_loaded is True
+
+            # Run concurrent unload and load
+            def do_unload():
+                time.sleep(0.01)
+                manager.unload()
+
+            def do_load():
+                time.sleep(0.02)
+                manager.load()
+
+            t1 = threading.Thread(target=do_unload)
+            t2 = threading.Thread(target=do_load)
+
+            t1.start()
+            t2.start()
+            t1.join()
+            t2.join()
+
+            # Should be in a consistent state (either loaded or not)
+            # The lock ensures no partial state
+            assert manager.is_loaded in [True, False]
+            if manager.is_loaded:
+                assert manager.model is not None
+            else:
+                assert manager.model is None
+
+
+class TestInferenceExecutorTimeout:
+    """Tests for InferenceExecutor timeout handling."""
+
+    @pytest.mark.asyncio
+    async def test_timeout_raises_inference_timeout_error(self):
+        """Test that timeout raises InferenceTimeoutError."""
+        executor = InferenceExecutor(max_workers=1, timeout=0.1)
+
+        def slow_function():
+            time.sleep(1.0)  # Much longer than timeout
+            return "done"
+
+        with pytest.raises(InferenceTimeoutError) as exc_info:
+            await executor.run(slow_function)
+
+        assert "timed out" in str(exc_info.value).lower()
+        executor.shutdown(wait=False)
+
+    @pytest.mark.asyncio
+    async def test_custom_timeout_override(self):
+        """Test that per-call timeout can override default."""
+        executor = InferenceExecutor(max_workers=1, timeout=10.0)
+
+        def slow_function():
+            time.sleep(1.0)
+            return "done"
+
+        # Use shorter timeout for this call
+        with pytest.raises(InferenceTimeoutError):
+            await executor.run(slow_function, timeout=0.1)
+
+        executor.shutdown(wait=False)
+
+    @pytest.mark.asyncio
+    async def test_successful_operation_within_timeout(self):
+        """Test that operations completing within timeout succeed."""
+        executor = InferenceExecutor(max_workers=1, timeout=5.0)
+
+        def quick_function():
+            return "success"
+
+        result = await executor.run(quick_function)
+        assert result == "success"
+        executor.shutdown(wait=False)
+
+
+class TestInferenceExecutorConcurrency:
+    """Tests for InferenceExecutor concurrent execution."""
+
+    @pytest.mark.asyncio
+    async def test_concurrent_tasks_run_in_parallel(self):
+        """Test that multiple tasks can run concurrently."""
+        executor = InferenceExecutor(max_workers=4, timeout=10.0)
+
+        execution_times = []
+        lock = threading.Lock()
+
+        def task(task_id: int):
+            start = time.time()
+            time.sleep(0.1)
+            with lock:
+                execution_times.append((task_id, start, time.time()))
+            return task_id
+
+        # Run 4 tasks concurrently
+        start_time = time.time()
+        results = await asyncio.gather(
+            executor.run(task, 1),
+            executor.run(task, 2),
+            executor.run(task, 3),
+            executor.run(task, 4),
+        )
+        total_time = time.time() - start_time
+
+        assert set(results) == {1, 2, 3, 4}
+        # If running in parallel, total time should be ~0.1s, not ~0.4s
+        assert total_time < 0.3  # Allow some overhead
+
+        executor.shutdown(wait=False)
+
+    @pytest.mark.asyncio
+    async def test_shutdown_prevents_new_tasks(self):
+        """Test that shutdown prevents new task submission."""
+        executor = InferenceExecutor(max_workers=1, timeout=5.0)
+        executor.shutdown(wait=True)
+
+        def simple_task():
+            return "done"
+
+        with pytest.raises(RuntimeError) as exc_info:
+            await executor.run(simple_task)
+
+        assert "shut down" in str(exc_info.value).lower()
+
+
+class TestInferenceExecutorProperties:
+    """Tests for InferenceExecutor property accessors."""
+
+    def test_timeout_property(self):
+        """Test timeout property returns configured value."""
+        executor = InferenceExecutor(max_workers=2, timeout=15.0)
+        assert executor.timeout == 15.0
+        executor.shutdown(wait=False)
+
+    def test_max_workers_property(self):
+        """Test max_workers property returns configured value."""
+        executor = InferenceExecutor(max_workers=8, timeout=30.0)
+        assert executor.max_workers == 8
+        executor.shutdown(wait=False)
