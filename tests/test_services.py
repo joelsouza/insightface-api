@@ -76,8 +76,8 @@ class TestDecodeImage:
     """Tests for decode_image function."""
 
     def test_invalid_bytes(self) -> None:
-        """Test decoding invalid image bytes."""
-        with pytest.raises(ImageDecodeError):
+        """Test decoding invalid image bytes raises validation error for bad magic bytes."""
+        with pytest.raises(ImageValidationError):
             decode_image(b"not an image")
 
     def test_valid_jpeg(self) -> None:
