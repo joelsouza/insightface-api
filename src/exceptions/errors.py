@@ -9,7 +9,8 @@ Exception Hierarchy:
     ├── ImageDecodeError (400) - Image decoding failures
     ├── ImageValidationError (400) - Image validation failures
     ├── RequestValidationError (400) - Request validation failures
-    └── ModelNotReadyError (503) - Model not available
+    ├── ModelNotReadyError (503) - Model not available
+    └── InferenceTimeoutError (504) - Inference operation timed out
 """
 
 from __future__ import annotations
@@ -131,3 +132,23 @@ class RequestValidationError(APIError):
             message: Description of what validation failed
         """
         super().__init__(message, status_code=400)
+
+
+class InferenceTimeoutError(APIError):
+    """
+    Raised when inference operation times out.
+
+    This occurs when face detection or embedding extraction takes longer
+    than the configured timeout, possibly due to GPU issues or model hangs.
+
+    HTTP Status: 504 Gateway Timeout
+    """
+
+    def __init__(self, message: str = "Inference operation timed out") -> None:
+        """
+        Initialize an inference timeout error.
+
+        Args:
+            message: Error description (default: "Inference operation timed out")
+        """
+        super().__init__(message, status_code=504, error_code="INFERENCE_TIMEOUT")
