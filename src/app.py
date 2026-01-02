@@ -14,6 +14,7 @@ Example:
 
 from __future__ import annotations
 
+import atexit
 import time
 import uuid
 from typing import Optional
@@ -65,6 +66,15 @@ def create_app(settings: Optional[Settings] = None) -> Flask:
     model_manager = ModelManager(settings=settings, logger=logger)
     model_manager.load()
     app.config["model_manager"] = model_manager
+
+    # Register shutdown handler to clean up resources
+    def shutdown_handler() -> None:
+        """Clean up resources on application shutdown."""
+        logger.info("Shutting down application...")
+        model_manager.unload()
+        logger.info("Shutdown complete")
+
+    atexit.register(shutdown_handler)
 
     # Register blueprints
     app.register_blueprint(api_blueprint)

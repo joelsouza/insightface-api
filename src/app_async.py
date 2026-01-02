@@ -15,6 +15,7 @@ Example:
 
 from __future__ import annotations
 
+import atexit
 import logging
 import time
 import uuid
@@ -64,7 +65,10 @@ def create_async_app(settings: Optional[Settings] = None) -> Quart:
     app.config["model_manager"] = model_manager
 
     # Initialize inference executor (thread pool for CPU-bound inference)
-    inference_executor = InferenceExecutor(max_workers=4)
+    inference_executor = InferenceExecutor(
+        max_workers=settings.inference_pool_size,
+        timeout=settings.inference_timeout,
+    )
     app.config["inference_executor"] = inference_executor
 
     # Register blueprints
@@ -76,12 +80,20 @@ def create_async_app(settings: Optional[Settings] = None) -> Quart:
     # Register request hooks
     _register_request_hooks(app)
 
-    # Register shutdown handler to cleanup executor
-    @app.teardown_appcontext
-    def shutdown_executor(exception: Optional[BaseException] = None) -> None:
-        pass  # Executor cleanup handled at app level
+    # Register shutdown handler to clean up resources
+    def shutdown_handler() -> None:
+        """Clean up resources on application shutdown."""
+        logger.info("Shutting down async application...")
+        inference_executor.shutdown(wait=True)
+        model_manager.unload()
+        logger.info("Shutdown complete")
 
-    logger.info("Async application initialized successfully")
+    atexit.register(shutdown_handler)
+
+    logger.info(
+        f"Async application initialized (pool_size={settings.inference_pool_size}, "
+        f"timeout={settings.inference_timeout}s)"
+    )
 
     return app
 
