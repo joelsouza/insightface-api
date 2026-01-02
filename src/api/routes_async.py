@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 from quart import Blueprint, Response, current_app, g, jsonify, request
 
+from src.exceptions import ModelNotReadyError
 from src.models import HealthResponse, HealthStatus, RepresentResponse
 from src.services import (
     ModelManager,
@@ -135,6 +136,13 @@ async def represent() -> tuple[Response, int]:
     logger = current_app.config["logger"]
 
     request_id = getattr(g, "request_id", "unknown")
+
+    # Check model readiness early to avoid processing if model isn't ready
+    if not mm.is_loaded:
+        raise ModelNotReadyError(
+            mm.initialization_error or "Model not initialized"
+        )
+
     start_time = time.perf_counter()
 
     # Add custom attributes to New Relic transaction
@@ -142,27 +150,20 @@ async def represent() -> tuple[Response, int]:
         newrelic.agent.add_custom_attribute("request_id", request_id)
 
     # Get files from async request
+    files = await request.files
+    image_file = files.get("image_file")
+    validate_image_file(image_file, settings.max_content_length)
+    file_bytes = image_file.read()  # FileStorage.read() is synchronous
+
     if HAS_NEWRELIC:
-        with newrelic.agent.FunctionTrace("file_upload/read"):
-            files = await request.files
-            image_file = files.get("image_file")
-            validate_image_file(image_file, settings.max_content_length)
-            file_bytes = image_file.read()
-    else:
-        files = await request.files
-        image_file = files.get("image_file")
-        validate_image_file(image_file, settings.max_content_length)
-        file_bytes = image_file.read()
+        newrelic.agent.add_custom_attribute("image_size_bytes", len(file_bytes))
 
     # Decode image
+    image = decode_image(file_bytes)
+
     if HAS_NEWRELIC:
-        with newrelic.agent.FunctionTrace("image/decode"):
-            image = decode_image(file_bytes)
-        newrelic.agent.add_custom_attribute("image_size_bytes", len(file_bytes))
         newrelic.agent.add_custom_attribute("image_width", image.shape[1])
         newrelic.agent.add_custom_attribute("image_height", image.shape[0])
-    else:
-        image = decode_image(file_bytes)
 
     # Validate dimensions
     validate_image_dimensions(image, settings.max_image_dimension)
@@ -170,12 +171,7 @@ async def represent() -> tuple[Response, int]:
     # Run face detection in thread pool (non-blocking)
     logger.info(f"[{request_id}] Running face detection...")
     detection_start = time.perf_counter()
-
-    if HAS_NEWRELIC:
-        with newrelic.agent.FunctionTrace("inference/face_detection"):
-            faces = await executor.run(mm.get_faces, image)
-    else:
-        faces = await executor.run(mm.get_faces, image)
+    faces = await executor.run(mm.get_faces, image)
 
     detection_time = (time.perf_counter() - detection_start) * 1000
 
@@ -185,13 +181,11 @@ async def represent() -> tuple[Response, int]:
     )
 
     # Extract embeddings
+    embeddings = [extract_face_data(face) for face in faces]
+
     if HAS_NEWRELIC:
-        with newrelic.agent.FunctionTrace("data/extract_embeddings"):
-            embeddings = [extract_face_data(face) for face in faces]
         newrelic.agent.add_custom_attribute("faces_detected", len(faces))
         newrelic.agent.add_custom_attribute("detection_time_ms", round(detection_time, 2))
-    else:
-        embeddings = [extract_face_data(face) for face in faces]
 
     # Build response
     processing_time = (time.perf_counter() - start_time) * 1000
