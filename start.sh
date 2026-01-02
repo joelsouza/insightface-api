@@ -4,14 +4,23 @@
 export FLASK_APP=app.py
 export FLASK_ENV=production
 
-# Calculate optimal number of workers based on CPU cores
-# Formula: (2 × cores) + 1
-# For shared-cpu-8x with 8 vCPUs: (2 × 8) + 1 = 17
-WORKERS=4
+# Calculate optimal number of workers based on CPU cores and memory
+# VM: shared-cpu-4x (4 vCPUs) with 3GB RAM
+#
+# This is a CPU-BOUND application (InsightFace neural network inference)
+# - Each worker loads its own copy of the model (~600-800MB)
+# - Python GIL limits thread parallelism for CPU work
+# - Formula for CPU-bound: workers ≈ cores (not 2×cores+1 which is for I/O)
+#
+# Memory budget: 3GB total
+# - Per worker: ~900MB-1.3GB (model + inference overhead)
+# - 2 workers = ~2GB, leaves headroom for processing spikes
+# - 3 workers = ~3GB, risks OOM during concurrent requests
+WORKERS=2
 
-# Number of threads per worker (good for I/O bound applications)
-# Since our app has both CPU-bound (face detection) and I/O-bound operations
-# 2-4 threads is a good compromise
+# Threads per worker - keep at 1 for CPU-bound workloads
+# Python's GIL prevents parallel execution of CPU-bound code
+# Multiple threads would only add memory overhead without throughput benefit
 THREADS=1
 
 # Set timeout (in seconds)
