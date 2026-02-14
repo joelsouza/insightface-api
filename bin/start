@@ -56,6 +56,7 @@ echo ""
 
 # Start Uvicorn with the async application factory
 exec $NEWRELIC_CMD uvicorn \
+    "main:app" \
     --host="0.0.0.0" \
     --port="$PORT" \
     --timeout-keep-alive="$TIMEOUT" \
