@@ -15,6 +15,7 @@ from quart import Blueprint, Response, current_app, g, jsonify, request
 
 from src.exceptions import ModelNotReadyError
 from src.models import HealthResponse, HealthStatus, RepresentResponse
+from src.instrumentation import add_attribute, notice_error, record_metric, trace
 from src.services import (
     ModelManager,
     decode_image,
@@ -22,14 +23,6 @@ from src.services import (
     validate_image_dimensions,
     validate_image_file,
 )
-
-# New Relic instrumentation (optional - only active when agent is running)
-try:
-    import newrelic.agent
-    HAS_NEWRELIC = True
-except ImportError:
-    newrelic = None  # type: ignore[assignment]
-    HAS_NEWRELIC = False
 
 if TYPE_CHECKING:
     from src.config import Settings
@@ -145,33 +138,33 @@ async def represent() -> tuple[Response, int]:
 
     start_time = time.perf_counter()
 
-    # Add custom attributes to New Relic transaction
-    if HAS_NEWRELIC:
-        newrelic.agent.add_custom_attribute("request_id", request_id)
+    add_attribute("request_id", request_id)
 
-    # Get files from async request
-    files = await request.files
-    image_file = files.get("image_file")
-    validate_image_file(image_file, settings.max_content_length)
-    file_bytes = image_file.read()  # FileStorage.read() is synchronous
+    # --- Validate & read upload ---
+    with trace("validate_request", "Custom/Validation"):
+        files = await request.files
+        image_file = files.get("image_file")
+        validate_image_file(image_file, settings.max_content_length)
+        file_bytes = image_file.read()  # FileStorage.read() is synchronous
 
-    if HAS_NEWRELIC:
-        newrelic.agent.add_custom_attribute("image_size_bytes", len(file_bytes))
+    add_attribute("image_size_bytes", len(file_bytes))
 
-    # Decode image
-    image = decode_image(file_bytes)
+    # --- Decode image bytes → numpy array ---
+    with trace("decode_image", "Custom/ImageProcessing"):
+        image = decode_image(file_bytes)
 
-    if HAS_NEWRELIC:
-        newrelic.agent.add_custom_attribute("image_width", image.shape[1])
-        newrelic.agent.add_custom_attribute("image_height", image.shape[0])
+    add_attribute("image_width", image.shape[1])
+    add_attribute("image_height", image.shape[0])
 
-    # Validate dimensions
-    validate_image_dimensions(image, settings.max_image_dimension)
+    with trace("validate_dimensions", "Custom/Validation"):
+        validate_image_dimensions(image, settings.max_image_dimension)
 
-    # Run face detection in thread pool (non-blocking)
+    # --- Run face detection in thread pool (non-blocking) ---
     logger.info(f"[{request_id}] Running face detection...")
     detection_start = time.perf_counter()
-    faces = await executor.run(mm.get_faces, image)
+
+    with trace("face_detection", "Custom/Inference"):
+        faces = await executor.run(mm.get_faces, image)
 
     detection_time = (time.perf_counter() - detection_start) * 1000
 
@@ -180,18 +173,22 @@ async def represent() -> tuple[Response, int]:
         f"Faces found: {len(faces)}"
     )
 
-    # Extract embeddings
-    embeddings = [extract_face_data(face) for face in faces]
+    # --- Extract embeddings from detected faces ---
+    with trace("extract_embeddings", "Custom/Extraction"):
+        embeddings = [extract_face_data(face) for face in faces]
 
-    if HAS_NEWRELIC:
-        newrelic.agent.add_custom_attribute("faces_detected", len(faces))
-        newrelic.agent.add_custom_attribute("detection_time_ms", round(detection_time, 2))
+    # --- Transaction attributes (NRQL queryable) ---
+    add_attribute("faces_detected", len(faces))
+    add_attribute("detection_time_ms", round(detection_time, 2))
 
-    # Build response
     processing_time = (time.perf_counter() - start_time) * 1000
+    add_attribute("processing_time_ms", round(processing_time, 2))
 
-    if HAS_NEWRELIC:
-        newrelic.agent.add_custom_attribute("processing_time_ms", round(processing_time, 2))
+    # --- Custom metrics (time-series, dashboards & alerting) ---
+    record_metric("Inference/DurationMs", detection_time)
+    record_metric("Inference/FacesDetected", len(faces))
+    record_metric("Image/SizeBytes", len(file_bytes))
+    record_metric("Request/ProcessingTimeMs", processing_time)
 
     response = RepresentResponse(
         embeddings=embeddings,
