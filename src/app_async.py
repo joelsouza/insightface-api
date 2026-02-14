@@ -27,6 +27,7 @@ from werkzeug.exceptions import HTTPException
 from src.api.routes_async import api_blueprint_async
 from src.config import Settings, setup_logging
 from src.exceptions import APIError
+from src.instrumentation import notice_error
 from src.models import ErrorResponse
 from src.services import InferenceExecutor, ModelManager
 
@@ -138,6 +139,7 @@ def _register_error_handlers(app: Quart, logger: logging.Logger) -> None:
         """Handle unexpected exceptions."""
         request_id = getattr(g, "request_id", None)
         logger.exception(f"[{request_id}] Unexpected error: {error}")
+        notice_error()
 
         response = ErrorResponse(
             error="An internal error occurred",

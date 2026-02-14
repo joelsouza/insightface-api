@@ -18,6 +18,7 @@ import numpy as np
 
 from src.config import Settings
 from src.exceptions import ModelNotReadyError
+from src.instrumentation import background_task
 
 if TYPE_CHECKING:
     pass
@@ -59,6 +60,7 @@ class ModelManager:
     _initialization_error: Optional[str] = field(default=None)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
+    @background_task(name="ModelLoad", group="Startup")
     def load(self) -> bool:
         """
         Load the InsightFace model.
