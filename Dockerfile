@@ -4,6 +4,12 @@ FROM python:3.12-slim AS builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     build-essential \
+    coreutils \
+    gcc \
+    libc-dev \
+    libffi-dev \
+    libressl-dev \
+    linux-headers \
     cmake \
     python3-dev \
     libopenblas-dev \
