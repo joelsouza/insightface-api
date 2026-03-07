@@ -8,8 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libc-dev \
     libffi-dev \
-    libressl-dev \
-    linux-headers \
+    libssl-dev \
     cmake \
     python3-dev \
     libopenblas-dev \
