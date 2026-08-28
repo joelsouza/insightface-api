@@ -60,6 +60,7 @@ RUN pip install --no-cache-dir --no-index /wheels/* \
 # Copy application code
 COPY src/ ./src/
 COPY bin/ ./bin/
+COPY newrelic.ini ./newrelic.ini
 
 # Set ownership and permissions
 RUN chmod +x bin/start \
@@ -70,8 +71,11 @@ COPY --from=builder --chown=appuser:appuser /models /app/insightface/models/buff
 
 EXPOSE 5001
 
-# New Relic app name default (license key should be passed at runtime)
-ENV NEW_RELIC_APP_NAME="InsightFace API"
+# New Relic. The config file holds behaviour only; identity comes from the
+# environment, because a value in newrelic.ini overrides the environment.
+# NEW_RELIC_LICENSE_KEY must be passed at runtime to turn the agent on.
+ENV NEW_RELIC_APP_NAME="InsightFace API" \
+    NEW_RELIC_CONFIG_FILE=/app/newrelic.ini
 
 # Keep the native math libraries single-threaded. The inference thread pool
 # provides the parallelism; extra threads here only oversubscribe the CPU.

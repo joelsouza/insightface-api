@@ -25,6 +25,8 @@
 #   IMAGE_URL_ALLOWED_HOSTS - Host allowlist for image_url (default: disabled)
 #   NEW_RELIC_LICENSE_KEY   - New Relic license key (enables APM when set)
 #   NEW_RELIC_APP_NAME      - New Relic application name (default: InsightFace API)
+#   NEW_RELIC_CONFIG_FILE   - New Relic config file (default: newrelic.ini next to /app)
+#   NEW_RELIC_ENVIRONMENT   - Section of newrelic.ini to apply (development|test|staging|production)
 #
 
 set -e
@@ -59,11 +61,20 @@ echo "  ORT Intra-Op Threads: $ORT_INTRA_OP_THREADS"
 echo "  Inference Max Queue: $INFERENCE_MAX_QUEUE"
 
 # New Relic configuration
+# newrelic.ini sets agent behaviour only. The licence key and the app name come
+# from the environment, so keep both out of that file: a value there wins over
+# the environment and would pin every deployment to one identity.
 NEWRELIC_CMD=""
 if [ -n "$NEW_RELIC_LICENSE_KEY" ]; then
     export NEW_RELIC_APP_NAME="${NEW_RELIC_APP_NAME:-InsightFace API}"
+    export NEW_RELIC_CONFIG_FILE="${NEW_RELIC_CONFIG_FILE:-$(cd "$(dirname "$0")/.." && pwd)/newrelic.ini}"
+    if [ ! -f "$NEW_RELIC_CONFIG_FILE" ]; then
+        echo "  New Relic: config file not found at $NEW_RELIC_CONFIG_FILE" >&2
+        exit 1
+    fi
     NEWRELIC_CMD="newrelic-admin run-program"
     echo "  New Relic: enabled (${NEW_RELIC_APP_NAME})"
+    echo "  New Relic Config: $NEW_RELIC_CONFIG_FILE${NEW_RELIC_ENVIRONMENT:+ [$NEW_RELIC_ENVIRONMENT]}"
 else
     echo "  New Relic: disabled"
 fi
