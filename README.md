@@ -76,8 +76,15 @@ DOWNLOAD_TIMEOUT=10                    # Seconds
 DOWNLOAD_MAX_CONCURRENCY=16            # Parallel downloads
 ```
 
-Only HTTPS URLs are fetched, the host must match a pattern, IP-literal hosts
-are always refused, and the body is dropped once it passes the upload limit.
+Only HTTPS URLs are fetched and the host must match a pattern. Beyond that,
+every address the host resolves to must be a public address, and the
+connection is pinned to the address that was checked. An allowlisted name
+therefore cannot reach loopback, a private range, or a cloud metadata service,
+and it cannot be swapped for one by a second DNS answer. Redirects are not
+followed, and the body is dropped once it passes the upload limit.
+
+A pattern of `*` is still a bad idea, but it no longer exposes internal
+services.
 
 ## API Endpoints
 

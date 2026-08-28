@@ -86,7 +86,13 @@ DOWNLOAD_TIMEOUT=10
 DOWNLOAD_MAX_CONCURRENCY=16
 ```
 
-`IMAGE_URL_ALLOWED_HOSTS` is a security boundary, not a convenience setting. Only HTTPS URLs whose host matches a pattern are fetched, and IP-literal hosts are always refused.
+`IMAGE_URL_ALLOWED_HOSTS` is a security boundary, not a convenience setting. `src/services/image_fetch.py` is the trust boundary against server-side request forgery, and it applies three checks that all have to stay:
+
+1. HTTPS only, host must match the allowlist, IP-literal hosts refused.
+2. **Every** address the host resolves to must be public. An allowlisted name can point at loopback, a private range, or a cloud metadata service, so checking the host text alone is not enough.
+3. The connection is **pinned** to the address that was checked, with the original host in the `Host` header and in the TLS server name. Resolving and then connecting by name would leave a window for a second DNS answer to swap in a private address.
+
+Redirects are not followed, because a redirect target would skip all three.
 
 ## Testing
 
