@@ -85,6 +85,9 @@ class TestProcessImage:
         result = process_image(jpeg_bytes, model_manager, settings)
         assert result.decode_ms >= 0.0
         assert result.detect_ms >= 0.0
+        assert result.align_ms >= 0.0
+        assert result.embed_ms >= 0.0
+        assert result.extract_ms >= 0.0
 
 
 class TestEmbeddingRounding:

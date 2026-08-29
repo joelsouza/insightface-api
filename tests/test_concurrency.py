@@ -138,6 +138,11 @@ class TestInferenceExecutorTimeout:
 
         result = await executor.run(quick_function)
         assert result == "success"
+        assert executor.submitted == 1
+        assert executor.completed == 1
+        assert executor.rejected == 0
+        assert executor.timed_out == 0
+        assert executor.in_flight == 0
         executor.shutdown(wait=False)
 
 
@@ -214,9 +219,14 @@ class TestInferenceExecutorBackPressure:
 
         assert exc_info.value.status_code == 503
         assert exc_info.value.error_code == "OVERLOADED"
+        assert executor.rejected == 1
+        assert executor.submitted == 2
+        assert executor.in_flight == 2
 
         release.set()
         assert await asyncio.gather(*running) == ["done", "done"]
+        assert executor.completed == 2
+        assert executor.in_flight == 0
         executor.shutdown(wait=False)
 
     @pytest.mark.asyncio

@@ -218,13 +218,19 @@ class TestFetchImage:
     async def test_returns_body(self, url_settings, semaphore) -> None:
         """Test that a normal response is returned as bytes."""
         payload = b"\xff\xd8\xff" + b"x" * 100
+        stats = {}
 
         async with make_client(
             lambda request: httpx.Response(200, content=payload)
         ) as client:
-            data = await fetch_image(ALLOWED_URL, client, semaphore, url_settings)
+            data = await fetch_image(
+                ALLOWED_URL, client, semaphore, url_settings, stats=stats
+            )
 
         assert data == payload
+        assert stats["dns_ms"] >= 0.0
+        assert stats["semaphore_wait_ms"] >= 0.0
+        assert stats["transfer_ms"] >= 0.0
 
     @pytest.mark.asyncio
     async def test_rejects_non_200(self, url_settings, semaphore) -> None:

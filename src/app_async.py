@@ -23,7 +23,7 @@ import time
 import uuid
 from typing import IO, Optional
 
-from quart import Quart, Response, g, jsonify
+from quart import Quart, Response, g, jsonify, request
 from quart.formparser import FormDataParser
 from quart.wrappers import Request
 from werkzeug.exceptions import HTTPException
@@ -31,7 +31,14 @@ from werkzeug.exceptions import HTTPException
 from src.api.routes_async import api_blueprint_async
 from src.config import Settings, setup_logging
 from src.exceptions import APIError
-from src.instrumentation import notice_error
+from src.instrumentation import (
+    add_attribute,
+    asgi_wrap,
+    ignore_transaction,
+    notice_error,
+    record_event,
+    set_transaction_name,
+)
 from src.models import ErrorResponse
 from src.services import InferenceExecutor, ModelManager
 
@@ -173,7 +180,20 @@ def _register_error_handlers(app: Quart, logger: logging.Logger) -> None:
     async def handle_api_error(error: APIError) -> tuple[Response, int]:
         """Handle custom API errors."""
         request_id = getattr(g, "request_id", None)
-        logger.warning(f"[{request_id}] {error.error_code}: {error.message}")
+        if error.status_code >= 500:
+            notice_error()
+        if hasattr(g, "nr_event"):
+            g.nr_event["error_code"] = error.error_code
+        add_attribute("request_id", request_id)
+        add_attribute("error_code", error.error_code)
+        logger.warning(
+            "api_error",
+            extra={
+                "request_id": request_id,
+                "error_code": error.error_code,
+                "status_code": error.status_code,
+            },
+        )
 
         payload = ErrorResponse(
             error=error.message,
@@ -192,11 +212,23 @@ def _register_error_handlers(app: Quart, logger: logging.Logger) -> None:
     async def handle_http_exception(error: HTTPException) -> tuple[dict, int]:
         """Handle Werkzeug HTTP exceptions."""
         request_id = getattr(g, "request_id", None)
-        logger.warning(f"[{request_id}] HTTP {error.code}: {error.description}")
+        error_code = f"HTTP_{error.code}"
+        if hasattr(g, "nr_event"):
+            g.nr_event["error_code"] = error_code
+        add_attribute("request_id", request_id)
+        add_attribute("error_code", error_code)
+        logger.warning(
+            "http_error",
+            extra={
+                "request_id": request_id,
+                "error_code": error_code,
+                "status_code": error.code,
+            },
+        )
 
         response = ErrorResponse(
             error=error.description or "An error occurred",
-            error_code=f"HTTP_{error.code}",
+            error_code=error_code,
             request_id=request_id,
         )
         return response.model_dump(), error.code or 500
@@ -205,7 +237,14 @@ def _register_error_handlers(app: Quart, logger: logging.Logger) -> None:
     async def handle_exception(error: Exception) -> tuple[dict, int]:
         """Handle unexpected exceptions."""
         request_id = getattr(g, "request_id", None)
-        logger.exception(f"[{request_id}] Unexpected error: {error}")
+        if hasattr(g, "nr_event"):
+            g.nr_event["error_code"] = "INTERNAL_ERROR"
+        add_attribute("request_id", request_id)
+        add_attribute("error_code", "INTERNAL_ERROR")
+        logger.exception(
+            "unexpected_error",
+            extra={"request_id": request_id, "error_code": "INTERNAL_ERROR"},
+        )
         notice_error()
 
         response = ErrorResponse(
@@ -229,12 +268,61 @@ def _register_request_hooks(app: Quart) -> None:
         """Generate request ID and store start time."""
         g.request_id = str(uuid.uuid4())[:8]
         g.start_time = time.perf_counter()
+        g.nr_event = {
+            "request_id": g.request_id,
+            "input_mode": None,
+            "status_code": None,
+            "error_code": None,
+            "image_bytes": None,
+            "image_width": None,
+            "image_height": None,
+            "downscaled": None,
+            "faces_detected": None,
+            "download_ms": 0.0,
+            "dns_ms": None,
+            "semaphore_wait_ms": None,
+            "transfer_ms": None,
+            "queue_wait_ms": None,
+            "decode_ms": None,
+            "detect_ms": None,
+            "align_ms": None,
+            "embed_ms": None,
+            "extract_ms": None,
+            "total_ms": None,
+            "pool_size": None,
+            "max_queue": None,
+            "in_flight": None,
+        }
+
+        if request.path == "/up":
+            ignore_transaction()
+        elif request.endpoint:
+            set_transaction_name(request.endpoint, group="Quart")
 
     @app.after_request
     async def after_request(response: Response) -> Response:
-        """Add request ID header to response."""
+        """Add request ID header and record the represent event."""
         if hasattr(g, "request_id"):
             response.headers["X-Request-ID"] = g.request_id
+
+        if getattr(request, "endpoint", None) == "api.represent":
+            event = getattr(g, "nr_event", {"request_id": g.request_id})
+            event["status_code"] = response.status_code
+            event["total_ms"] = (time.perf_counter() - g.start_time) * 1000
+
+            executor = app.config.get("inference_executor")
+            if executor is not None:
+                if event.get("pool_size") is None:
+                    event["pool_size"] = executor.max_workers
+                if event.get("max_queue") is None:
+                    event["max_queue"] = executor.max_queue
+                if event.get("in_flight") is None:
+                    event["in_flight"] = executor.in_flight
+
+            for key, value in event.items():
+                if value is not None:
+                    add_attribute(key, value)
+            record_event("FaceRepresent", event)
         return response
 
 
@@ -254,7 +342,7 @@ def get_app() -> Quart:
     """
     global _app_instance
     if _app_instance is None:
-        _app_instance = create_async_app()
+        _app_instance = asgi_wrap(create_async_app())
     return _app_instance
 
 

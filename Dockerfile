@@ -75,6 +75,7 @@ EXPOSE 5001
 # environment, because a value in newrelic.ini overrides the environment.
 # NEW_RELIC_LICENSE_KEY must be passed at runtime to turn the agent on.
 ENV NEW_RELIC_APP_NAME="InsightFace API" \
+    NEW_RELIC_ENVIRONMENT=production \
     NEW_RELIC_CONFIG_FILE=/app/newrelic.ini
 
 # Keep the native math libraries single-threaded. The inference thread pool
@@ -88,6 +89,6 @@ USER appuser
 
 # Health check - waits for model to load (models are baked in, so this is fast)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:5001/up || exit 1
+    CMD curl -f "http://localhost:${PORT:-5001}/up" || exit 1
 
 CMD ["./bin/start"]

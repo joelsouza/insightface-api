@@ -30,7 +30,7 @@ import numpy as np
 
 from src.config import Settings
 from src.exceptions import ModelNotReadyError
-from src.instrumentation import background_task
+from src.instrumentation import add_attribute, background_task, notice_error
 
 # ArcFace models always take 112x112 aligned crops.
 RECOGNITION_IMAGE_SIZE = 112
@@ -101,7 +101,12 @@ class _FaceEngine:
         self._face_align = face_align
         self.det_size = det_size
 
-    def get(self, img: np.ndarray, max_num: int = 0) -> list[Any]:
+    def get(
+        self,
+        img: np.ndarray,
+        max_num: int = 0,
+        timings: Optional[dict[str, float]] = None,
+    ) -> list[Any]:
         """
         Detect faces and attach an embedding to each one.
 
@@ -112,13 +117,20 @@ class _FaceEngine:
         Returns:
             List of `insightface.app.common.Face` objects
         """
+        detect_start = time.perf_counter()
         bboxes, kpss = self.det.detect(img, max_num=max_num, metric="default")
+        if timings is not None:
+            timings["detect_ms"] = (time.perf_counter() - detect_start) * 1000
 
         if bboxes.shape[0] == 0:
+            if timings is not None:
+                timings.setdefault("align_ms", 0.0)
+                timings.setdefault("embed_ms", 0.0)
             return []
 
         faces = []
         crops = []
+        align_start = time.perf_counter()
         for i in range(bboxes.shape[0]):
             kps = kpss[i] if kpss is not None else None
             faces.append(
@@ -134,12 +146,19 @@ class _FaceEngine:
                         img, landmark=kps, image_size=RECOGNITION_IMAGE_SIZE
                     )
                 )
+        if timings is not None:
+            timings["align_ms"] = (time.perf_counter() - align_start) * 1000
 
         if crops:
             # One ONNX call for every face in the image.
+            embed_start = time.perf_counter()
             feats = self.rec.get_feat(crops)
+            if timings is not None:
+                timings["embed_ms"] = (time.perf_counter() - embed_start) * 1000
             for face, feat in zip(faces, feats):
                 face.embedding = feat.flatten()
+        elif timings is not None:
+            timings["embed_ms"] = 0.0
 
         return faces
 
@@ -278,6 +297,7 @@ class ModelManager:
                 self.load_time = time.time()
                 self.is_loaded = True
                 self._initialization_error = None
+                add_attribute("model_load_duration_ms", self.load_duration * 1000)
 
                 self.logger.info(
                     f"Model loaded successfully in {self.load_duration:.2f}s "
@@ -291,7 +311,9 @@ class ModelManager:
                 self.load_duration = time.perf_counter() - start_time
                 self.is_loaded = False
                 self._initialization_error = str(e)
+                add_attribute("model_load_duration_ms", self.load_duration * 1000)
                 self.logger.exception(f"Failed to load model: {e}")
+                notice_error()
                 return False
 
     def unload(self) -> None:
@@ -310,7 +332,9 @@ class ModelManager:
                 self.load_time = None
                 gc.collect()
 
-    def get_faces(self, image: np.ndarray) -> list[Any]:
+    def get_faces(
+        self, image: np.ndarray, timings: Optional[dict[str, float]] = None
+    ) -> list[Any]:
         """
         Detect faces and extract embeddings from an image.
 
@@ -339,7 +363,9 @@ class ModelManager:
             raise ModelNotReadyError(
                 self._initialization_error or "Model not initialized"
             )
-        return self.model.get(image)
+        if timings is None:
+            return self.model.get(image)
+        return self.model.get(image, timings=timings)
 
     @property
     def uptime(self) -> float:

@@ -25,8 +25,9 @@ import asyncio
 import fnmatch
 import ipaddress
 import socket
+import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Union
+from typing import Any, TYPE_CHECKING, Optional, Union
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
@@ -167,7 +168,9 @@ def validate_image_url(url: str, settings: Settings) -> tuple[str, int, str]:
     return host, port, urlunsplit(("", "", path, parts.query, ""))
 
 
-async def resolve_public_addresses(host: str, port: int) -> list[IPAddress]:
+async def resolve_public_addresses(
+    host: str, port: int, stats: Optional[dict[str, Any]] = None
+) -> list[IPAddress]:
     """
     Resolve a host and refuse it unless every address is public.
 
@@ -192,10 +195,14 @@ async def resolve_public_addresses(host: str, port: int) -> list[IPAddress]:
     """
     loop = asyncio.get_running_loop()
 
+    dns_start = time.perf_counter()
     try:
         infos = await loop.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     except socket.gaierror as e:
         raise ImageDownloadError(f"Could not resolve image_url host: {host} ({e})")
+    finally:
+        if stats is not None:
+            stats["dns_ms"] = (time.perf_counter() - dns_start) * 1000
 
     addresses = []
     seen = set()
@@ -218,7 +225,9 @@ async def resolve_public_addresses(host: str, port: int) -> list[IPAddress]:
     return addresses
 
 
-async def build_target(url: str, settings: Settings) -> _Target:
+async def build_target(
+    url: str, settings: Settings, stats: Optional[dict[str, Any]] = None
+) -> _Target:
     """
     Validate a URL and pin it to a checked address.
 
@@ -240,7 +249,7 @@ async def build_target(url: str, settings: Settings) -> _Target:
         ImageDownloadError: If the name cannot be resolved
     """
     host, port, path = validate_image_url(url, settings)
-    addresses = await resolve_public_addresses(host, port)
+    addresses = await resolve_public_addresses(host, port, stats=stats)
 
     address = addresses[0]
     literal = f"[{address}]" if address.version == 6 else str(address)
@@ -259,6 +268,7 @@ async def fetch_image(
     client: httpx.AsyncClient,
     semaphore: asyncio.Semaphore,
     settings: Settings,
+    stats: Optional[dict[str, Any]] = None,
 ) -> bytes:
     """
     Download an image over HTTPS, bounded in size and concurrency.
@@ -282,12 +292,18 @@ async def fetch_image(
     Example:
         >>> data = await fetch_image(url, client, semaphore, settings)
     """
-    target = await build_target(url, settings)
+    target = await build_target(url, settings, stats=stats)
 
     max_bytes = settings.max_content_length
     max_mb = max_bytes / (1024 * 1024)
 
+    semaphore_start = time.perf_counter()
     async with semaphore:
+        if stats is not None:
+            stats["semaphore_wait_ms"] = (
+                time.perf_counter() - semaphore_start
+            ) * 1000
+        transfer_start = time.perf_counter()
         try:
             async with client.stream(
                 "GET",
@@ -319,6 +335,11 @@ async def fetch_image(
 
         except httpx.HTTPError as e:
             raise ImageDownloadError(f"Image download failed: {e}")
+        finally:
+            if stats is not None:
+                stats["transfer_ms"] = (
+                    time.perf_counter() - transfer_start
+                ) * 1000
 
     data = b"".join(chunks)
     if not data:

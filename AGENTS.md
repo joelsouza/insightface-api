@@ -113,12 +113,25 @@ Two notes on the async tests:
 ## Exception Hierarchy
 
 Custom exceptions in `src/exceptions/errors.py`:
-- `ImageDecodeError` (400) - cv2.imdecode failure
-- `ImageValidationError` (400) - Dimension/size issues
-- `RequestValidationError` (400) - Missing/invalid request
-- `ModelNotReadyError` (503) - Model not initialized
-- `ServiceOverloadedError` (503) - No free inference slot; response carries `Retry-After`
-- `ImageDownloadError` (502) - `image_url` could not be fetched
-- `InferenceTimeoutError` (504) - Inference exceeded `INFERENCE_TIMEOUT`
+- `ImageDecodeError` (400, `IMAGE_DECODE_FAILED`) - cv2.imdecode failure
+- `ImageValidationError` (400, `IMAGE_VALIDATION_FAILED`) - Dimension/size issues
+- `RequestValidationError` (400, `REQUEST_INVALID`) - Missing/invalid request
+- `ModelNotReadyError` (503, `MODEL_NOT_READY`) - Model not initialized
+- `ServiceOverloadedError` (503, `OVERLOADED`) - No free inference slot; response carries `Retry-After`
+- `ImageDownloadError` (502, `IMAGE_DOWNLOAD_FAILED`) - `image_url` could not be fetched
+- `InferenceTimeoutError` (504, `INFERENCE_TIMEOUT`) - Inference exceeded `INFERENCE_TIMEOUT`
 
 All inherit from `APIError` with `status_code` and `error_code` attributes.
+
+## Observability
+
+The production async app is explicitly wrapped for New Relic in `get_app()`.
+It names transactions by Quart endpoint and ignores `/up`, which is a Docker
+probe. Each `/represent` request emits one `FaceRepresent` custom event.
+The event includes request status, input mode, image size, face count, stage
+timings, queue timing, executor settings, and in-flight requests.
+
+The New Relic dashboard is defined in `newrelic/dashboard.json`. GitHub sends
+deployment markers from `.github/workflows/deploy-marker.yml` after pushes to
+`main`. The workflow needs the `NEW_RELIC_API_KEY` repository secret. Coolify
+deploys outside GitHub Actions, so the marker time is approximate.

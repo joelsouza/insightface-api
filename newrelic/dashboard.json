@@ -1,0 +1,242 @@
+{
+  "name": "InsightFace API / Observability",
+  "description": "Golden signals, pipeline timing, saturation, and runtime data for the InsightFace API.",
+  "permissions": "PUBLIC_READ_ONLY",
+  "pages": [
+    {
+      "name": "Golden Signals",
+      "description": "Request volume, latency, errors, and input mix.",
+      "widgets": [
+        {
+          "title": "Requests per minute",
+          "visualization": { "id": "viz.line" },
+          "layout": { "column": 1, "row": 1, "width": 4, "height": 3 },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              { "accountIds": [7704697], "query": "SELECT count(*) FROM FaceRepresent TIMESERIES 1 minute" }
+            ]
+          }
+        },
+        {
+          "title": "Latency percentiles (ms)",
+          "visualization": { "id": "viz.line" },
+          "layout": { "column": 5, "row": 1, "width": 4, "height": 3 },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              { "accountIds": [7704697], "query": "SELECT percentile(total_ms, 50, 95, 99) FROM FaceRepresent TIMESERIES" }
+            ]
+          }
+        },
+        {
+          "title": "Error rate",
+          "visualization": { "id": "viz.billboard" },
+          "layout": { "column": 9, "row": 1, "width": 4, "height": 3 },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              { "accountIds": [7704697], "query": "SELECT percentage(count(*), WHERE status_code >= 500) FROM FaceRepresent" }
+            ]
+          }
+        },
+        {
+          "title": "Latency by input mode",
+          "visualization": { "id": "viz.line" },
+          "layout": { "column": 1, "row": 4, "width": 6, "height": 3 },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              { "accountIds": [7704697], "query": "SELECT percentile(total_ms, 50, 95) FROM FaceRepresent FACET input_mode TIMESERIES" }
+            ]
+          }
+        },
+        {
+          "title": "Apdex",
+          "visualization": { "id": "viz.billboard" },
+          "layout": { "column": 7, "row": 4, "width": 3, "height": 3 },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              { "accountIds": [7704697], "query": "SELECT apdex(total_ms / 1000, 0.5) FROM FaceRepresent" }
+            ]
+          }
+        },
+        {
+          "title": "Response status",
+          "visualization": { "id": "viz.table" },
+          "layout": { "column": 10, "row": 4, "width": 3, "height": 3 },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              { "accountIds": [7704697], "query": "SELECT count(*) FROM FaceRepresent FACET status_code SINCE 1 hour ago" }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Inference Pipeline",
+      "description": "Time spent in download, queueing, decode, inference, and extraction.",
+      "widgets": [
+        {
+          "title": "Pipeline stage breakdown (ms)",
+          "visualization": { "id": "viz.line" },
+          "layout": { "column": 1, "row": 1, "width": 8, "height": 4 },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              { "accountIds": [7704697], "query": "SELECT average(download_ms) AS download, average(queue_wait_ms) AS queue_wait, average(decode_ms) AS decode, average(detect_ms) AS detect, average(embed_ms) AS embed, average(extract_ms) AS extract FROM FaceRepresent TIMESERIES" }
+            ],
+            "stacked": true
+          }
+        },
+        {
+          "title": "Faces per image",
+          "visualization": { "id": "viz.line" },
+          "layout": { "column": 9, "row": 1, "width": 4, "height": 4 },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              { "accountIds": [7704697], "query": "SELECT average(faces_detected), percentile(faces_detected, 50, 95) FROM FaceRepresent TIMESERIES" }
+            ]
+          }
+        },
+        {
+          "title": "Image size distribution",
+          "visualization": { "id": "viz.histogram" },
+          "layout": { "column": 1, "row": 5, "width": 6, "height": 4 },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              { "accountIds": [7704697], "query": "SELECT histogram(image_bytes, width: 100000, buckets: 20) FROM FaceRepresent" }
+            ]
+          }
+        },
+        {
+          "title": "Downscale rate",
+          "visualization": { "id": "viz.billboard" },
+          "layout": { "column": 7, "row": 5, "width": 3, "height": 4 },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              { "accountIds": [7704697], "query": "SELECT percentage(count(*), WHERE downscaled = true) FROM FaceRepresent" }
+            ]
+          }
+        },
+        {
+          "title": "Queue wait percentiles (ms)",
+          "visualization": { "id": "viz.line" },
+          "layout": { "column": 10, "row": 5, "width": 3, "height": 4 },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              { "accountIds": [7704697], "query": "SELECT percentile(queue_wait_ms, 50, 95, 99) FROM FaceRepresent TIMESERIES" }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Errors and Saturation",
+      "description": "Failure classes, back-pressure, timeouts, and executor saturation.",
+      "widgets": [
+        {
+          "title": "Errors by code",
+          "visualization": { "id": "viz.table" },
+          "layout": { "column": 1, "row": 1, "width": 6, "height": 4 },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              { "accountIds": [7704697], "query": "SELECT count(*) FROM FaceRepresent WHERE status_code >= 400 FACET error_code SINCE 1 hour ago" }
+            ]
+          }
+        },
+        {
+          "title": "503 back-pressure rate",
+          "visualization": { "id": "viz.billboard" },
+          "layout": { "column": 7, "row": 1, "width": 3, "height": 4 },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              { "accountIds": [7704697], "query": "SELECT percentage(count(*), WHERE status_code = 503 AND error_code = 'OVERLOADED') FROM FaceRepresent" }
+            ]
+          }
+        },
+        {
+          "title": "504 timeout rate",
+          "visualization": { "id": "viz.billboard" },
+          "layout": { "column": 10, "row": 1, "width": 3, "height": 4 },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              { "accountIds": [7704697], "query": "SELECT percentage(count(*), WHERE status_code = 504 AND error_code = 'INFERENCE_TIMEOUT') FROM FaceRepresent" }
+            ]
+          }
+        },
+        {
+          "title": "Transaction errors by class",
+          "visualization": { "id": "viz.table" },
+          "layout": { "column": 1, "row": 5, "width": 6, "height": 4 },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              { "accountIds": [7704697], "query": "SELECT count(*) FROM TransactionError WHERE appName = 'InsightFace API' FACET error.class SINCE 1 hour ago" }
+            ]
+          }
+        },
+        {
+          "title": "In-flight requests",
+          "visualization": { "id": "viz.line" },
+          "layout": { "column": 7, "row": 5, "width": 6, "height": 4 },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              { "accountIds": [7704697], "query": "SELECT max(in_flight) FROM FaceRepresent TIMESERIES" }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Runtime and Lifecycle",
+      "description": "Model startup, process health, resource use, and log volume.",
+      "widgets": [
+        {
+          "title": "Model load duration (ms)",
+          "visualization": { "id": "viz.line" },
+          "layout": { "column": 1, "row": 1, "width": 6, "height": 4 },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              { "accountIds": [7704697], "query": "SELECT latest(model_load_duration_ms) FROM Transaction WHERE appName = 'InsightFace API' FACET name TIMESERIES" }
+            ]
+          }
+        },
+        {
+          "title": "Model loads and restarts",
+          "visualization": { "id": "viz.line" },
+          "layout": { "column": 7, "row": 1, "width": 6, "height": 4 },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              { "accountIds": [7704697], "query": "SELECT count(*) FROM Transaction WHERE appName = 'InsightFace API' AND name = 'ModelLoad' TIMESERIES" }
+            ]
+          }
+        },
+        {
+          "title": "Memory",
+          "visualization": { "id": "viz.line" },
+          "layout": { "column": 1, "row": 5, "width": 4, "height": 4 },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              { "accountIds": [7704697], "query": "SELECT average(memory.usedBytes) FROM Metric WHERE appName = 'InsightFace API' TIMESERIES" }
+            ]
+          }
+        },
+        {
+          "title": "CPU",
+          "visualization": { "id": "viz.line" },
+          "layout": { "column": 5, "row": 5, "width": 4, "height": 4 },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              { "accountIds": [7704697], "query": "SELECT average(cpuPercent) FROM Metric WHERE appName = 'InsightFace API' TIMESERIES" }
+            ]
+          }
+        },
+        {
+          "title": "Log volume by level",
+          "visualization": { "id": "viz.line" },
+          "layout": { "column": 9, "row": 5, "width": 4, "height": 4 },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              { "accountIds": [7704697], "query": "SELECT count(*) FROM Log WHERE service.name = 'InsightFace API' FACET level TIMESERIES" }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

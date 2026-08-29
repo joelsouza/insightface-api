@@ -73,7 +73,9 @@ class ImageDecodeError(APIError):
         Args:
             message: Error description (default: "Failed to decode image")
         """
-        super().__init__(message, status_code=400)
+        super().__init__(
+            message, status_code=400, error_code="IMAGE_DECODE_FAILED"
+        )
 
 
 class ImageValidationError(APIError):
@@ -93,7 +95,9 @@ class ImageValidationError(APIError):
         Args:
             message: Description of what validation failed
         """
-        super().__init__(message, status_code=400)
+        super().__init__(
+            message, status_code=400, error_code="IMAGE_VALIDATION_FAILED"
+        )
 
 
 class ModelNotReadyError(APIError):
@@ -113,7 +117,7 @@ class ModelNotReadyError(APIError):
         Args:
             message: Error description (default: "Model not initialized")
         """
-        super().__init__(message, status_code=503)
+        super().__init__(message, status_code=503, error_code="MODEL_NOT_READY")
 
 
 class RequestValidationError(APIError):
@@ -133,7 +137,7 @@ class RequestValidationError(APIError):
         Args:
             message: Description of what validation failed
         """
-        super().__init__(message, status_code=400)
+        super().__init__(message, status_code=400, error_code="REQUEST_INVALID")
 
 
 class InferenceTimeoutError(APIError):
