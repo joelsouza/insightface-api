@@ -189,7 +189,7 @@ def validate_image_dimensions(image: np.ndarray, max_dimension: int) -> None:
         )
 
 
-def extract_face_data(face: Any) -> FaceEmbedding:
+def extract_face_data(face: Any, decimals: int = 6) -> FaceEmbedding:
     """
     Extract structured data from a detected face object.
 
@@ -198,6 +198,9 @@ def extract_face_data(face: Any) -> FaceEmbedding:
 
     Args:
         face: InsightFace Face object containing detection results
+        decimals: Decimal places kept in the embedding. float32 values print
+            with 17 digits in JSON, which doubles the response size for no
+            gain: 6 decimals keep cosine similarity to ~1e-7.
 
     Returns:
         FaceEmbedding model with embedding vector and metadata
@@ -211,7 +214,7 @@ def extract_face_data(face: Any) -> FaceEmbedding:
         >>> embeddings = [extract_face_data(face) for face in faces]
     """
     return FaceEmbedding(
-        embedding=face.embedding.tolist(),
+        embedding=np.round(face.embedding.astype(np.float64), decimals).tolist(),
         bbox=face.bbox.astype(int).tolist(),
         keypoints=face.kps.tolist(),
         det_score=float(face.det_score),

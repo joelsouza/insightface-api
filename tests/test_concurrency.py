@@ -10,16 +10,12 @@ from __future__ import annotations
 import asyncio
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-# Import the mocked insightface module for proper patching
-import insightface
-
 from src.config import Settings
-from src.exceptions import InferenceTimeoutError
+from src.exceptions import InferenceTimeoutError, ServiceOverloadedError
 from src.services import InferenceExecutor, ModelManager
 
 
@@ -31,19 +27,20 @@ class TestModelManagerThreadSafety:
         load_count = 0
         load_lock = threading.Lock()
 
-        def mock_load_model(*args, **kwargs):
+        def mock_make_session(*args, **kwargs):
             nonlocal load_count
             with load_lock:
                 load_count += 1
-            time.sleep(0.1)  # Simulate model loading time
-            mock_model = MagicMock()
-            mock_model.prepare = MagicMock()
-            return mock_model
+            time.sleep(0.05)  # Simulate session creation time
+            return MagicMock()
 
         logger = MagicMock()
         manager = ModelManager(settings=settings, logger=logger)
 
-        with patch.object(insightface.app, "FaceAnalysis", side_effect=mock_load_model):
+        with patch(
+            "src.services.model_manager._make_session",
+            side_effect=mock_make_session,
+        ):
             # Start multiple threads trying to load
             threads = []
             for _ in range(5):
@@ -55,8 +52,8 @@ class TestModelManagerThreadSafety:
             for t in threads:
                 t.join()
 
-            # Model should only be loaded once due to lock
-            assert load_count == 1
+            # One session per model, created by a single thread
+            assert load_count == 2
             assert manager.is_loaded is True
 
     def test_load_unload_thread_safety(self, settings: Settings):
@@ -64,12 +61,10 @@ class TestModelManagerThreadSafety:
         logger = MagicMock()
         manager = ModelManager(settings=settings, logger=logger)
 
-        def mock_load(*args, **kwargs):
-            mock_model = MagicMock()
-            mock_model.prepare = MagicMock()
-            return mock_model
-
-        with patch.object(insightface.app, "FaceAnalysis", side_effect=mock_load):
+        with patch(
+            "src.services.model_manager._make_session",
+            return_value=MagicMock(),
+        ):
             # Load first
             manager.load()
             assert manager.is_loaded is True
@@ -143,6 +138,11 @@ class TestInferenceExecutorTimeout:
 
         result = await executor.run(quick_function)
         assert result == "success"
+        assert executor.submitted == 1
+        assert executor.completed == 1
+        assert executor.rejected == 0
+        assert executor.timed_out == 0
+        assert executor.in_flight == 0
         executor.shutdown(wait=False)
 
 
@@ -193,6 +193,49 @@ class TestInferenceExecutorConcurrency:
             await executor.run(simple_task)
 
         assert "shut down" in str(exc_info.value).lower()
+
+
+class TestInferenceExecutorBackPressure:
+    """Tests for bounded in-flight requests."""
+
+    @pytest.mark.asyncio
+    async def test_rejects_when_all_slots_are_taken(self):
+        """Test that a full executor rejects instead of queueing forever."""
+        executor = InferenceExecutor(max_workers=1, timeout=5.0, max_queue=1)
+        release = threading.Event()
+
+        def blocking_task():
+            release.wait(timeout=5.0)
+            return "done"
+
+        # Fill both slots (1 running + 1 queued).
+        running = [
+            asyncio.create_task(executor.run(blocking_task)) for _ in range(2)
+        ]
+        await asyncio.sleep(0.05)
+
+        with pytest.raises(ServiceOverloadedError) as exc_info:
+            await executor.run(blocking_task)
+
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.error_code == "OVERLOADED"
+        assert executor.rejected == 1
+        assert executor.submitted == 2
+        assert executor.in_flight == 2
+
+        release.set()
+        assert await asyncio.gather(*running) == ["done", "done"]
+        assert executor.completed == 2
+        assert executor.in_flight == 0
+        executor.shutdown(wait=False)
+
+    @pytest.mark.asyncio
+    async def test_capacity_reports_workers_plus_queue(self):
+        """Test that capacity is the sum of pool size and queue size."""
+        executor = InferenceExecutor(max_workers=4, timeout=5.0, max_queue=16)
+        assert executor.capacity == 20
+        assert executor.max_queue == 16
+        executor.shutdown(wait=False)
 
 
 class TestInferenceExecutorProperties:

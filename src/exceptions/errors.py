@@ -10,6 +10,8 @@ Exception Hierarchy:
     ├── ImageValidationError (400) - Image validation failures
     ├── RequestValidationError (400) - Request validation failures
     ├── ModelNotReadyError (503) - Model not available
+    ├── ServiceOverloadedError (503) - No free inference slot
+    ├── ImageDownloadError (502) - Remote image could not be fetched
     └── InferenceTimeoutError (504) - Inference operation timed out
 """
 
@@ -71,7 +73,9 @@ class ImageDecodeError(APIError):
         Args:
             message: Error description (default: "Failed to decode image")
         """
-        super().__init__(message, status_code=400)
+        super().__init__(
+            message, status_code=400, error_code="IMAGE_DECODE_FAILED"
+        )
 
 
 class ImageValidationError(APIError):
@@ -91,7 +95,9 @@ class ImageValidationError(APIError):
         Args:
             message: Description of what validation failed
         """
-        super().__init__(message, status_code=400)
+        super().__init__(
+            message, status_code=400, error_code="IMAGE_VALIDATION_FAILED"
+        )
 
 
 class ModelNotReadyError(APIError):
@@ -111,7 +117,7 @@ class ModelNotReadyError(APIError):
         Args:
             message: Error description (default: "Model not initialized")
         """
-        super().__init__(message, status_code=503)
+        super().__init__(message, status_code=503, error_code="MODEL_NOT_READY")
 
 
 class RequestValidationError(APIError):
@@ -131,7 +137,7 @@ class RequestValidationError(APIError):
         Args:
             message: Description of what validation failed
         """
-        super().__init__(message, status_code=400)
+        super().__init__(message, status_code=400, error_code="REQUEST_INVALID")
 
 
 class InferenceTimeoutError(APIError):
@@ -152,3 +158,45 @@ class InferenceTimeoutError(APIError):
             message: Error description (default: "Inference operation timed out")
         """
         super().__init__(message, status_code=504, error_code="INFERENCE_TIMEOUT")
+
+
+class ServiceOverloadedError(APIError):
+    """
+    Raised when every inference slot is taken.
+
+    Under a burst, queueing without limit only makes each request wait until
+    it times out. Rejecting early lets the caller retry against a server that
+    can still make progress.
+
+    HTTP Status: 503 Service Unavailable
+    """
+
+    def __init__(
+        self, message: str = "Server is at capacity, retry shortly"
+    ) -> None:
+        """
+        Initialize a service overloaded error.
+
+        Args:
+            message: Error description
+        """
+        super().__init__(message, status_code=503, error_code="OVERLOADED")
+
+
+class ImageDownloadError(APIError):
+    """
+    Raised when an image referenced by `image_url` cannot be fetched.
+
+    Covers network failures, non-200 responses, and oversized bodies.
+
+    HTTP Status: 502 Bad Gateway
+    """
+
+    def __init__(self, message: str = "Failed to download image") -> None:
+        """
+        Initialize an image download error.
+
+        Args:
+            message: Error description
+        """
+        super().__init__(message, status_code=502, error_code="IMAGE_DOWNLOAD_FAILED")
