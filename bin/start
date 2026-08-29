@@ -7,19 +7,26 @@
 # thread pool for CPU-bound inference operations.
 #
 # Architecture:
-#   - Single process holds the ML model (~500MB)
+#   - Single process holds the ML model (~280MB)
 #   - Async I/O handles many concurrent connections
-#   - ThreadPoolExecutor (4 threads) manages inference queue
-#   - ONNX runtime releases GIL during compute for true parallelism
+#   - ThreadPoolExecutor manages the inference queue
+#   - Each ONNX session runs single-threaded, so the pool size is the only
+#     knob that controls how many CPUs inference uses
 #
 # Environment Variables:
-#   PORT                  - Server port (default: 5001)
-#   TIMEOUT               - Keep-alive timeout in seconds (default: 60)
-#   LOG_LEVEL             - Logging level (default: info)
-#   MAX_IMAGE_DIMENSION   - Max image size for detection (default: 640)
-#   DETECTION_THRESHOLD   - Face detection threshold (default: 0.5)
-#   NEW_RELIC_LICENSE_KEY - New Relic license key (enables APM when set)
-#   NEW_RELIC_APP_NAME    - New Relic application name (default: InsightFace API)
+#   PORT                    - Server port (default: 5001)
+#   TIMEOUT                 - Keep-alive timeout in seconds (default: 60)
+#   LOG_LEVEL               - Logging level (default: info)
+#   MAX_IMAGE_DIMENSION     - Max image size for detection (default: 640)
+#   DETECTION_THRESHOLD     - Face detection threshold (default: 0.5)
+#   INFERENCE_POOL_SIZE     - Inference threads (default: 4)
+#   ORT_INTRA_OP_THREADS    - ONNX threads per session (default: 1)
+#   INFERENCE_MAX_QUEUE     - Requests allowed to queue (default: 16)
+#   IMAGE_URL_ALLOWED_HOSTS - Host allowlist for image_url (default: disabled)
+#   NEW_RELIC_LICENSE_KEY   - New Relic license key (enables APM when set)
+#   NEW_RELIC_APP_NAME      - New Relic application name (default: InsightFace API)
+#   NEW_RELIC_CONFIG_FILE   - New Relic config file (default: newrelic.ini next to /app)
+#   NEW_RELIC_ENVIRONMENT   - Section of newrelic.ini to apply (development|test|staging|production)
 #
 
 set -e
@@ -34,6 +41,14 @@ export PORT
 export LOG_LEVEL
 export MAX_IMAGE_DIMENSION="${MAX_IMAGE_DIMENSION:-640}"
 export DETECTION_THRESHOLD="${DETECTION_THRESHOLD:-0.5}"
+export INFERENCE_POOL_SIZE="${INFERENCE_POOL_SIZE:-4}"
+export ORT_INTRA_OP_THREADS="${ORT_INTRA_OP_THREADS:-1}"
+export INFERENCE_MAX_QUEUE="${INFERENCE_MAX_QUEUE:-16}"
+
+# Keep the native math libraries single-threaded (see Dockerfile).
+export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
+export OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-1}"
+export MKL_NUM_THREADS="${MKL_NUM_THREADS:-1}"
 
 echo "Starting InsightFace API v2 (Async)..."
 echo "  Port: $PORT"
@@ -41,14 +56,25 @@ echo "  Timeout: ${TIMEOUT}s"
 echo "  Log Level: $LOG_LEVEL"
 echo "  Max Image Dimension: $MAX_IMAGE_DIMENSION"
 echo "  Detection Threshold: $DETECTION_THRESHOLD"
-echo "  Architecture: Single process + ThreadPoolExecutor (4 threads)"
+echo "  Inference Pool Size: $INFERENCE_POOL_SIZE"
+echo "  ORT Intra-Op Threads: $ORT_INTRA_OP_THREADS"
+echo "  Inference Max Queue: $INFERENCE_MAX_QUEUE"
 
 # New Relic configuration
+# newrelic.ini sets agent behaviour only. The licence key and the app name come
+# from the environment, so keep both out of that file: a value there wins over
+# the environment and would pin every deployment to one identity.
 NEWRELIC_CMD=""
 if [ -n "$NEW_RELIC_LICENSE_KEY" ]; then
     export NEW_RELIC_APP_NAME="${NEW_RELIC_APP_NAME:-InsightFace API}"
+    export NEW_RELIC_CONFIG_FILE="${NEW_RELIC_CONFIG_FILE:-$(cd "$(dirname "$0")/.." && pwd)/newrelic.ini}"
+    if [ ! -f "$NEW_RELIC_CONFIG_FILE" ]; then
+        echo "  New Relic: config file not found at $NEW_RELIC_CONFIG_FILE" >&2
+        exit 1
+    fi
     NEWRELIC_CMD="newrelic-admin run-program"
     echo "  New Relic: enabled (${NEW_RELIC_APP_NAME})"
+    echo "  New Relic Config: $NEW_RELIC_CONFIG_FILE${NEW_RELIC_ENVIRONMENT:+ [$NEW_RELIC_ENVIRONMENT]}"
 else
     echo "  New Relic: disabled"
 fi

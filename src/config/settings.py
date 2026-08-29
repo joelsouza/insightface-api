@@ -49,6 +49,16 @@ class Settings(BaseSettings):
         request_timeout: Request processing timeout in seconds (default: 30)
         inference_pool_size: Number of threads for inference executor (default: 4)
         inference_timeout: Timeout for inference operations in seconds (default: 30)
+        inference_max_queue: Extra requests allowed to wait for a free thread
+            before the API rejects with 503 (default: 16)
+        det_model_file: Detection model file name inside the model directory
+        rec_model_file: Recognition model file name inside the model directory
+        ort_intra_op_threads: ONNX Runtime threads per session (default: 1)
+        embedding_decimals: Decimal places kept in returned embeddings (default: 6)
+        image_url_allowed_hosts: Comma-separated host patterns allowed for the
+            `image_url` input. Empty disables URL input (default: "")
+        download_timeout: Timeout for image downloads in seconds (default: 10)
+        download_max_concurrency: Maximum parallel image downloads (default: 16)
 
     Example:
         >>> settings = Settings()
@@ -70,11 +80,37 @@ class Settings(BaseSettings):
     request_timeout: float = Field(default=30.0, ge=1.0)
     inference_pool_size: int = Field(default=4, ge=1, le=32)
     inference_timeout: float = Field(default=30.0, ge=1.0, le=300.0)
+    inference_max_queue: int = Field(default=16, ge=0)
+
+    # Model files loaded from `<model_root>/models/<model_name>/`.
+    det_model_file: str = Field(default="det_10g.onnx")
+    rec_model_file: str = Field(default="w600k_r50.onnx")
+    ort_intra_op_threads: int = Field(default=1, ge=1, le=32)
+
+    embedding_decimals: int = Field(default=6, ge=1, le=17)
+
+    # URL input. Empty allowlist keeps the `image_url` input disabled.
+    image_url_allowed_hosts: str = Field(default="")
+    download_timeout: float = Field(default=10.0, ge=0.1, le=300.0)
+    download_max_concurrency: int = Field(default=16, ge=1, le=256)
 
     model_config = {
         "env_prefix": "",
         "case_sensitive": False,
     }
+
+    @property
+    def allowed_image_url_hosts(self) -> list[str]:
+        """
+        Return the `image_url` host allowlist as a list of fnmatch patterns.
+
+        An empty list means URL input is disabled.
+
+        Example:
+            >>> Settings(image_url_allowed_hosts="*.r2.cloudflarestorage.com").allowed_image_url_hosts
+            ['*.r2.cloudflarestorage.com']
+        """
+        return [h.strip().lower() for h in self.image_url_allowed_hosts.split(",") if h.strip()]
 
 
 def setup_logging(level: str) -> logging.Logger:

@@ -18,9 +18,16 @@ from flask import Flask
 from flask.testing import FlaskClient
 from quart import Quart
 
-# Mock insightface before importing src modules
+# Mock insightface and onnxruntime before importing src modules.
+# ModelManager builds ONNX sessions itself, so both need to be in place before
+# any src module is imported.
 sys.modules["insightface"] = MagicMock()
 sys.modules["insightface.app"] = MagicMock()
+sys.modules["onnxruntime"] = MagicMock()
+
+# ensure_available() must return a real path string: ModelManager joins the
+# model file names onto it.
+sys.modules["insightface"].utils.ensure_available.return_value = "/models/buffalo_l"
 
 from src.app import create_app
 from src.app_async import create_async_app
@@ -158,3 +165,31 @@ async def async_client(async_app: Quart):
 def mock_inference_executor() -> InferenceExecutor:
     """Create a test inference executor with short timeout."""
     return InferenceExecutor(max_workers=2, timeout=5.0)
+
+
+@pytest.fixture
+def jpeg_bytes() -> bytes:
+    """Encode a small JPEG (below the half-resolution decode threshold)."""
+    import cv2
+
+    image = np.random.randint(0, 255, (200, 200, 3), dtype=np.uint8)
+    return cv2.imencode(".jpg", image)[1].tobytes()
+
+
+@pytest.fixture
+def large_jpeg_bytes() -> bytes:
+    """Encode a JPEG large enough to trigger half-resolution decoding."""
+    import cv2
+
+    # 2560 >= 4 * 640, the default max_image_dimension
+    image = np.random.randint(0, 255, (1440, 2560, 3), dtype=np.uint8)
+    return cv2.imencode(".jpg", image)[1].tobytes()
+
+
+@pytest.fixture
+def png_bytes() -> bytes:
+    """Encode a small PNG."""
+    import cv2
+
+    image = np.random.randint(0, 255, (200, 200, 3), dtype=np.uint8)
+    return cv2.imencode(".png", image)[1].tobytes()
