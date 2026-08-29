@@ -127,7 +127,17 @@ All inherit from `APIError` with `status_code` and `error_code` attributes.
 
 The production async app is explicitly wrapped for New Relic in `get_app()`.
 It names transactions by Quart endpoint and ignores `/up`, which is a Docker
-probe. Each `/represent` request emits one `FaceRepresent` custom event.
+probe. The wrapper's `__call__` is a plain function, so `bin/start` runs
+Uvicorn with `--interface asgi3`. With `auto`, Uvicorn picks ASGI2 and every
+request fails with `_bind_receive_send() missing 2 required positional
+arguments`.
+
+The Python agent starts inside the container when `NEW_RELIC_LICENSE_KEY` is
+set at runtime. `newrelic.ini` holds behaviour only; identity comes from the
+environment (`NEW_RELIC_LICENSE_KEY`, `NEW_RELIC_APP_NAME`,
+`NEW_RELIC_ENVIRONMENT`), set in Coolify, never in the image or the ini.
+
+Each `/represent` request emits one `FaceRepresent` custom event.
 The event includes request status, input mode, image size, face count, stage
 timings, queue timing, executor settings, and in-flight requests.
 

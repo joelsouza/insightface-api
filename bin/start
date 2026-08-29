@@ -80,11 +80,15 @@ else
 fi
 echo ""
 
-# Start Uvicorn with the async application factory
+# Start Uvicorn with the async application factory.
+# --interface asgi3 is required. get_app() returns the app wrapped by the New
+# Relic ASGIApplicationWrapper, whose __call__ is a plain function, so Uvicorn's
+# auto-detection picks ASGI2 and calls app(scope) with one argument.
 exec $NEWRELIC_CMD uvicorn \
     --host="0.0.0.0" \
     --port="$PORT" \
     --timeout-keep-alive="$TIMEOUT" \
     --log-level="$LOG_LEVEL" \
+    --interface=asgi3 \
     --factory \
     "src.app_async:get_app"
