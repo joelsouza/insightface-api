@@ -45,7 +45,9 @@ LOG_LEVEL=INFO                         # Logging verbosity
 MAX_IMAGE_DIMENSION=640                # Image resolution for detection
 DETECTION_THRESHOLD=0.5                # Face confidence threshold (0-1)
 EXECUTION_PROVIDER=CPUExecutionProvider  # CPUExecutionProvider, CUDAExecutionProvider, TensorrtExecutionProvider
-NEW_RELIC_LICENSE_KEY=your_key         # Optional: Enable New Relic APM
+NEW_RELIC_LICENSE_KEY=your_key         # Optional: starts the New Relic agent in the container
+NEW_RELIC_APP_NAME="InsightFace API"   # Optional: New Relic application name
+NEW_RELIC_ENVIRONMENT=production       # Optional: newrelic.ini section to apply
 ```
 
 ### Observability
