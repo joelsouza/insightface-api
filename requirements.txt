@@ -4,29 +4,25 @@
 # Core ML dependencies
 insightface==1.0.1
 onnxruntime==1.29.0
-numpy==2.2.4
-opencv-python-headless==4.11.0.86
+numpy==2.5.2
+opencv-python-headless==5.0.0.93
 
 # Web framework (async)
-quart==0.20.0
-uvicorn[standard]==0.34.0
+quart==0.23.0
+uvicorn[standard]==0.52.4
 
 # HTTP client for the image_url input
 httpx==0.28.1
 
 # Data validation
-pydantic==2.13.4
-pydantic-settings==2.14.2
+pydantic==2.13.5
+pydantic-settings==2.15.0
 
 # Monitoring
 newrelic==13.5.0
 
-# Required by insightface (transitive but pinned for reproducibility)
-albumentations==2.0.5
+# Used directly by src/services/pipeline.py
 Pillow==12.3.0
-scikit-learn==1.9.0
 
-Cython==3.0.12
-easydict==1.13
-prettytable==3.16.0
-tqdm==4.67.1
+# Required by insightface (transitive but pinned for reproducibility)
+tqdm==4.70.0

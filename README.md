@@ -14,7 +14,7 @@ A REST API for face detection and facial embedding extraction. Send an image, ge
 
 ### Requirements
 
-- Python 3.12+
+- Python 3.13+
 - Docker (optional)
 
 ### Installation
