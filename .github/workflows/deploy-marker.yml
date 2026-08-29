@@ -1,0 +1,64 @@
+name: New Relic deployment marker
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-marker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mark-deployment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      NEW_RELIC_API_KEY: ${{ secrets.NEW_RELIC_API_KEY }}
+      NEW_RELIC_ACCOUNT_ID: "7704697"
+      NEW_RELIC_APP_ID: "1018254134"
+      COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+
+    steps:
+      - name: Create New Relic deployment marker
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -n "$NEW_RELIC_API_KEY" || {
+            echo "NEW_RELIC_API_KEY is required"
+            exit 1
+          }
+
+          entity_query="query { actor { entitySearch(query: \"domainId = '$NEW_RELIC_APP_ID' AND accountId = '$NEW_RELIC_ACCOUNT_ID'\") { results { entities { guid } } } } }"
+          entity_response=$(curl --fail-with-body --silent --show-error \
+            -X POST https://api.newrelic.com/graphql \
+            -H "Api-Key: $NEW_RELIC_API_KEY" \
+            -H "Content-Type: application/json" \
+            --data "$(jq -n --arg query "$entity_query" '{query: $query}')")
+
+          entity_guid=$(jq -er \
+            '.data.actor.entitySearch.results.entities[0].guid' \
+            <<<"$entity_response")
+
+          version_literal=$(printf '%s' "$GITHUB_SHA" | jq -Rr '@json')
+          guid_literal=$(printf '%s' "$entity_guid" | jq -Rr '@json')
+          changelog=${COMMIT_MESSAGE:-Manual deployment marker}
+          changelog_literal=$(printf '%s' "$changelog" | jq -Rr '@json')
+
+          mutation="mutation { changeTrackingCreateDeployment(deployment: { version: $version_literal, entityGuid: $guid_literal, commit: $version_literal, changelog: $changelog_literal }) { deploymentId entityGuid version } }"
+          response=$(curl --fail-with-body --silent --show-error \
+            -X POST https://api.newrelic.com/graphql \
+            -H "Api-Key: $NEW_RELIC_API_KEY" \
+            -H "Content-Type: application/json" \
+            --data "$(jq -n --arg query "$mutation" '{query: $query}')")
+
+          if jq -e '(.errors // []) | length > 0' <<<"$response" >/dev/null; then
+            jq -e '.errors' <<<"$response"
+            exit 1
+          fi
+
+          jq -e '.data.changeTrackingCreateDeployment.deploymentId' <<<"$response"

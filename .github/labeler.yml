@@ -23,7 +23,6 @@ docker:
       - any-glob-to-any-file:
           - "Dockerfile"
           - ".dockerignore"
-          - "newrelic/**"
 
 ci:
   - changed-files:

@@ -15,7 +15,7 @@ from quart import Blueprint, Response, current_app, g, jsonify, request
 
 from src.exceptions import ModelNotReadyError, RequestValidationError
 from src.models import HealthResponse, HealthStatus, RepresentResponse
-from src.instrumentation import add_attribute, record_metric, trace
+from src.instrumentation import add_attribute, trace
 from src.services import (
     ModelManager,
     fetch_image,
@@ -143,22 +143,29 @@ async def _read_input(settings: Settings) -> tuple[bytes, str]:
         )
 
     if image_url:
+        g.nr_event["input_mode"] = "url"
         client = current_app.config.get("http_client")
         if client is None:
             raise RequestValidationError("image_url input is not available")
 
         with trace("download_image", "Custom/ImageDownload"):
-            return (
-                await fetch_image(
+            download_start = time.perf_counter()
+            try:
+                data = await fetch_image(
                     image_url,
                     client,
                     current_app.config["download_semaphore"],
                     settings,
-                ),
-                "url",
-            )
+                    stats=getattr(g, "nr_event", None),
+                )
+            finally:
+                g.nr_event["download_ms"] = (
+                    time.perf_counter() - download_start
+                ) * 1000
+            return data, "url"
 
     assert image_file is not None  # narrowed by the checks above
+    g.nr_event["input_mode"] = "file"
     validate_image_file(image_file, settings.max_content_length)
     return image_file.read(), "file"  # FileStorage.read() is synchronous
 
@@ -207,18 +214,33 @@ async def represent() -> tuple[Response, int]:
     with trace("read_input", "Custom/Validation"):
         file_bytes, input_mode = await _read_input(settings)
 
+    event = g.nr_event
+    event["image_bytes"] = len(file_bytes)
+    event["input_mode"] = input_mode
+
     add_attribute("image_size_bytes", len(file_bytes))
     add_attribute("input_mode", input_mode)
 
     # --- One thread-pool job: decode, validate, detect, extract ---
-    logger.info(f"[{request_id}] Running face detection ({input_mode})...")
+    logger.info(
+        "inference_started",
+        extra={"request_id": request_id, "input_mode": input_mode},
+    )
 
     with trace("inference", "Custom/Inference"):
-        result = await executor.run(process_image, file_bytes, mm, settings)
+        result = await executor.run(
+            process_image, file_bytes, mm, settings, stats=event
+        )
 
     logger.info(
-        f"[{request_id}] Detection completed in {result.detect_ms:.1f}ms "
-        f"(decode {result.decode_ms:.1f}ms). Faces found: {len(result.faces)}"
+        "inference_completed",
+        extra={
+            "request_id": request_id,
+            "input_mode": input_mode,
+            "detect_ms": result.detect_ms,
+            "decode_ms": result.decode_ms,
+            "faces_detected": len(result.faces),
+        },
     )
 
     # --- Transaction attributes (NRQL queryable) ---
@@ -228,15 +250,23 @@ async def represent() -> tuple[Response, int]:
     add_attribute("detection_time_ms", round(result.detect_ms, 2))
     add_attribute("decode_time_ms", round(result.decode_ms, 2))
 
+    event.update(
+        {
+            "image_width": result.width,
+            "image_height": result.height,
+            "downscaled": result.downscaled,
+            "faces_detected": len(result.faces),
+            "decode_ms": result.decode_ms,
+            "detect_ms": result.detect_ms,
+            "align_ms": result.align_ms,
+            "embed_ms": result.embed_ms,
+            "extract_ms": result.extract_ms,
+            "in_flight": executor.in_flight,
+        }
+    )
+
     processing_time = (time.perf_counter() - start_time) * 1000
     add_attribute("processing_time_ms", round(processing_time, 2))
-
-    # --- Custom metrics (time-series, dashboards & alerting) ---
-    record_metric("Inference/DurationMs", result.detect_ms)
-    record_metric("Inference/DecodeMs", result.decode_ms)
-    record_metric("Inference/FacesDetected", len(result.faces))
-    record_metric("Image/SizeBytes", len(file_bytes))
-    record_metric("Request/ProcessingTimeMs", processing_time)
 
     response = RepresentResponse(
         embeddings=result.faces,

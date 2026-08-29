@@ -48,6 +48,19 @@ EXECUTION_PROVIDER=CPUExecutionProvider  # CPUExecutionProvider, CUDAExecutionPr
 NEW_RELIC_LICENSE_KEY=your_key         # Optional: Enable New Relic APM
 ```
 
+### Observability
+
+The production Quart application is wrapped by the New Relic agent. It names
+transactions by route and ignores the `/up` Docker probe. Each `/represent`
+request emits one `FaceRepresent` event with request, image, pipeline, queue,
+and response data. New Relic forwards application logs with `request_id` and
+`input_mode` fields.
+
+The dashboard definition is in `newrelic/dashboard.json`. Deployment markers
+are sent by `.github/workflows/deploy-marker.yml` when `NEW_RELIC_API_KEY` is
+set as a repository secret. The marker time is the GitHub push time. Coolify
+deploys the application outside GitHub Actions.
+
 ### Throughput
 
 ```bash
@@ -133,6 +146,10 @@ curl -X POST -H "content-type: application/json" \
 Bounding boxes and keypoints are always in original image pixels.
 
 **Error responses** carry `error`, `error_code`, and `request_id`:
+
+The stable error codes are `REQUEST_INVALID`, `IMAGE_DECODE_FAILED`,
+`IMAGE_VALIDATION_FAILED`, `MODEL_NOT_READY`, `IMAGE_DOWNLOAD_FAILED`,
+`OVERLOADED`, and `INFERENCE_TIMEOUT`.
 
 | Status | Meaning |
 |--------|---------|

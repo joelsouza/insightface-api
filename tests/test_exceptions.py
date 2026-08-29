@@ -43,7 +43,7 @@ class TestImageDecodeError:
         """Test ImageDecodeError defaults."""
         error = ImageDecodeError()
         assert error.status_code == 400
-        assert error.error_code == "ImageDecodeError"
+        assert error.error_code == "IMAGE_DECODE_FAILED"
         assert "decode" in error.message.lower()
 
     def test_custom_message(self) -> None:
@@ -60,7 +60,7 @@ class TestImageValidationError:
         error = ImageValidationError("Image too small")
         assert error.status_code == 400
         assert error.message == "Image too small"
-        assert error.error_code == "ImageValidationError"
+        assert error.error_code == "IMAGE_VALIDATION_FAILED"
 
 
 class TestModelNotReadyError:
@@ -70,6 +70,7 @@ class TestModelNotReadyError:
         """Test ModelNotReadyError defaults."""
         error = ModelNotReadyError()
         assert error.status_code == 503
+        assert error.error_code == "MODEL_NOT_READY"
         assert "not initialized" in error.message.lower()
 
     def test_custom_message(self) -> None:
@@ -86,4 +87,4 @@ class TestRequestValidationError:
         error = RequestValidationError("No file provided")
         assert error.status_code == 400
         assert error.message == "No file provided"
-        assert error.error_code == "RequestValidationError"
+        assert error.error_code == "REQUEST_INVALID"

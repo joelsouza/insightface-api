@@ -7,8 +7,8 @@ inference operations without blocking the event loop.
 from __future__ import annotations
 
 import asyncio
+import time
 from concurrent.futures import ThreadPoolExecutor
-from functools import partial
 from typing import Any, Callable, Optional, TypeVar
 
 from src.exceptions import InferenceTimeoutError, ServiceOverloadedError
@@ -65,6 +65,11 @@ class InferenceExecutor:
         self._max_queue = max_queue
         self._slots = asyncio.Semaphore(max_workers + max_queue)
         self._is_shutdown = False
+        self.submitted = 0
+        self.rejected = 0
+        self.timed_out = 0
+        self.completed = 0
+        self._in_flight = 0
 
     @property
     def timeout(self) -> float:
@@ -86,11 +91,17 @@ class InferenceExecutor:
         """Return the total number of requests allowed in flight."""
         return self._max_workers + self._max_queue
 
+    @property
+    def in_flight(self) -> int:
+        """Return the number of accepted requests not yet finished."""
+        return self._in_flight
+
     async def run(
         self,
         func: Callable[..., T],
         *args: Any,
         timeout: Optional[float] = None,
+        stats: Optional[dict[str, Any]] = None,
         **kwargs: Any,
     ) -> T:
         """Run a blocking function in the thread pool with timeout.
@@ -112,6 +123,7 @@ class InferenceExecutor:
             raise RuntimeError("Executor has been shut down")
 
         if self._slots.locked():
+            self.rejected += 1
             raise ServiceOverloadedError(
                 f"Server is at capacity ({self.capacity} requests in flight), "
                 f"retry shortly"
@@ -121,18 +133,38 @@ class InferenceExecutor:
         loop = asyncio.get_running_loop()
 
         async with self._slots:
+            self.submitted += 1
+            self._in_flight += 1
+            queued_at = time.perf_counter()
+
+            def run_submitted() -> T:
+                if stats is not None:
+                    stats["queue_wait_ms"] = (
+                        time.perf_counter() - queued_at
+                    ) * 1000
+                return func(*args, **kwargs)
+
             try:
-                return await asyncio.wait_for(
+                result = await asyncio.wait_for(
                     loop.run_in_executor(
                         self._executor,
-                        partial(func, *args, **kwargs),
+                        run_submitted,
                     ),
                     timeout=effective_timeout,
                 )
             except asyncio.TimeoutError:
+                self.timed_out += 1
                 raise InferenceTimeoutError(
                     f"Inference operation timed out after {effective_timeout}s"
                 )
+            except Exception:
+                self.completed += 1
+                raise
+            else:
+                self.completed += 1
+                return result
+            finally:
+                self._in_flight -= 1
 
     def shutdown(self, wait: bool = True) -> None:
         """Shutdown the thread pool.

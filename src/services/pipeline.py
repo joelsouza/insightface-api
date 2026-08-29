@@ -41,7 +41,10 @@ class PipelineResult:
         width: Original image width in pixels
         height: Original image height in pixels
         decode_ms: Time spent decoding the image
-        detect_ms: Time spent in detection and recognition
+        detect_ms: Time spent in face detection
+        align_ms: Time spent aligning face crops
+        embed_ms: Time spent extracting face embeddings
+        extract_ms: Time spent converting faces to response data
         downscaled: Whether the image was decoded at half resolution
     """
 
@@ -50,6 +53,9 @@ class PipelineResult:
     height: int
     decode_ms: float
     detect_ms: float
+    align_ms: float
+    embed_ms: float
+    extract_ms: float
     downscaled: bool
 
 
@@ -151,9 +157,10 @@ def process_image(
 
     validate_image_dimensions(image, settings.max_image_dimension)
 
+    timings: dict[str, float] = {}
     detect_start = time.perf_counter()
-    faces = mm.get_faces(image)
-    detect_ms = (time.perf_counter() - detect_start) * 1000
+    faces = mm.get_faces(image, timings=timings)
+    inference_ms = (time.perf_counter() - detect_start) * 1000
 
     if scale != 1:
         for face in faces:
@@ -166,11 +173,20 @@ def process_image(
     else:
         height, width = image.shape[0] * scale, image.shape[1] * scale
 
+    extract_start = time.perf_counter()
+    extracted_faces = [
+        extract_face_data(f, settings.embedding_decimals) for f in faces
+    ]
+    extract_ms = (time.perf_counter() - extract_start) * 1000
+
     return PipelineResult(
-        faces=[extract_face_data(f, settings.embedding_decimals) for f in faces],
+        faces=extracted_faces,
         width=width,
         height=height,
         decode_ms=decode_ms,
-        detect_ms=detect_ms,
+        detect_ms=timings.get("detect_ms", inference_ms),
+        align_ms=timings.get("align_ms", 0.0),
+        embed_ms=timings.get("embed_ms", 0.0),
+        extract_ms=extract_ms,
         downscaled=scale != 1,
     )
