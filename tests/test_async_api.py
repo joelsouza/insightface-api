@@ -8,9 +8,8 @@ Quart application and InferenceExecutor thread pool.
 from __future__ import annotations
 
 import io
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
-import numpy as np
 import pytest
 from werkzeug.datastructures import FileStorage
 
@@ -127,13 +126,10 @@ class TestAsyncRepresentEndpoint:
             )
             assert response.status_code == 503
 
-    async def test_represent_with_valid_image(self, async_app, mock_face):
+    async def test_represent_with_valid_image(self, async_app, mock_face, png_bytes):
         """Test successful face detection with valid image."""
-        # Create a valid PNG image
-        png_header = b"\x89PNG\r\n\x1a\n"
-        png_data = png_header + b"\x00" * 100
         file_storage = FileStorage(
-            stream=io.BytesIO(png_data),
+            stream=io.BytesIO(png_bytes),
             filename="test.png",
             content_type="image/png",
         )
@@ -142,22 +138,104 @@ class TestAsyncRepresentEndpoint:
         async_app.config["model_manager"].model = MagicMock()
         async_app.config["model_manager"].model.get.return_value = [mock_face]
 
-        # Mock decode_image to return a valid array
-        with patch("src.api.routes_async.decode_image") as mock_decode:
-            mock_decode.return_value = np.zeros((100, 100, 3), dtype=np.uint8)
+        async with async_app.test_client() as client:
+            response = await client.post(
+                "/represent",
+                files={"image_file": file_storage},
+            )
 
+            assert response.status_code == 200
+            data = await response.get_json()
+            assert data["faces_detected"] == 1
+            assert len(data["embeddings"]) == 1
+            assert len(data["embeddings"][0]["embedding"]) == 512
+            assert "processing_time_ms" in data
+            assert "request_id" in data
+
+    async def test_represent_rejects_file_and_url_together(
+        self, async_app, png_bytes
+    ):
+        """Test that sending both inputs is a 400."""
+        file_storage = FileStorage(
+            stream=io.BytesIO(png_bytes),
+            filename="test.png",
+            content_type="image/png",
+        )
+
+        async with async_app.test_client() as client:
+            response = await client.post(
+                "/represent",
+                files={"image_file": file_storage},
+                form={"image_url": "https://example.com/a.jpg"},
+            )
+            assert response.status_code == 400
+            data = await response.get_json()
+            assert "not both" in data["error"]
+
+    async def test_represent_rejects_empty_json_body(self, async_app):
+        """Test that a JSON body with no image_url is a 400."""
+        async with async_app.test_client() as client:
+            response = await client.post("/represent", json={})
+            assert response.status_code == 400
+
+    async def test_represent_accepts_image_url(
+        self, settings, mock_face, png_bytes
+    ):
+        """Test that an allowlisted image_url is downloaded and processed."""
+        from src.app_async import create_async_app
+        from src.services import ModelManager
+
+        settings.image_url_allowed_hosts = "*.example.com"
+
+        with patch.object(ModelManager, "load", return_value=True):
+            app = create_async_app(settings)
+
+        app.config["model_manager"].is_loaded = True
+        app.config["model_manager"].model = MagicMock()
+        app.config["model_manager"].model.get.return_value = [mock_face]
+
+        # test_app() runs the before_serving hooks that open the HTTP client.
+        with patch(
+            "src.api.routes_async.fetch_image",
+            new=AsyncMock(return_value=png_bytes),
+        ) as mock_fetch:
+            async with app.test_app() as test_app:
+                response = await test_app.test_client().post(
+                    "/represent",
+                    json={"image_url": "https://cdn.example.com/a.png"},
+                )
+
+        assert response.status_code == 200
+        data = await response.get_json()
+        assert data["faces_detected"] == 1
+        assert mock_fetch.await_count == 1
+
+    async def test_represent_returns_503_when_overloaded(
+        self, async_app, png_bytes
+    ):
+        """Test that a full inference queue returns 503 with Retry-After."""
+        from src.exceptions import ServiceOverloadedError
+
+        file_storage = FileStorage(
+            stream=io.BytesIO(png_bytes),
+            filename="test.png",
+            content_type="image/png",
+        )
+
+        executor = async_app.config["inference_executor"]
+        with patch.object(
+            executor, "run", side_effect=ServiceOverloadedError("full")
+        ):
             async with async_app.test_client() as client:
                 response = await client.post(
                     "/represent",
                     files={"image_file": file_storage},
                 )
 
-                assert response.status_code == 200
-                data = await response.get_json()
-                assert "embeddings" in data
-                assert "faces_detected" in data
-                assert "processing_time_ms" in data
-                assert "request_id" in data
+        assert response.status_code == 503
+        assert response.headers["Retry-After"] == "1"
+        data = await response.get_json()
+        assert data["error_code"] == "OVERLOADED"
 
 
 class TestAsyncRequestId:

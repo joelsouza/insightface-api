@@ -2,8 +2,8 @@
 # Use this for Docker builds to minimize image size
 
 # Core ML dependencies
-insightface==0.7.3
-onnxruntime==1.21.0
+insightface==1.0.1
+onnxruntime==1.29.0
 numpy==2.2.4
 opencv-python-headless==4.11.0.86
 
@@ -11,16 +11,21 @@ opencv-python-headless==4.11.0.86
 quart==0.20.0
 uvicorn[standard]==0.34.0
 
+# HTTP client for the image_url input
+httpx==0.28.1
+
 # Data validation
-pydantic==2.11.3
-pydantic-settings==2.12.0
+pydantic==2.13.4
+pydantic-settings==2.14.2
 
 # Monitoring
-newrelic
+newrelic==13.5.0
 
 # Required by insightface (transitive but pinned for reproducibility)
 albumentations==2.0.5
-scikit-learn==1.6.1
+Pillow==12.3.0
+scikit-learn==1.9.0
+
 Cython==3.0.12
 easydict==1.13
 prettytable==3.16.0

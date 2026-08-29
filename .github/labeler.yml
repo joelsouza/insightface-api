@@ -1,0 +1,41 @@
+# Labels applied to a pull request based on the files it changes.
+# Used by .github/workflows/label.yml (actions/labeler).
+
+api:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/api/**"
+          - "src/models/**"
+
+python:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/**/*.py"
+          - "bin/*.py"
+
+tests:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "tests/**"
+
+docker:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "Dockerfile"
+          - ".dockerignore"
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/**"
+
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "requirements*.txt"
+
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*.md"
+          - "docs/**"

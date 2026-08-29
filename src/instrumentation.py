@@ -9,6 +9,7 @@ conditional import so business logic stays clean.
 from __future__ import annotations
 
 from contextlib import contextmanager
+from importlib.metadata import PackageNotFoundError, version
 from typing import Any, Generator
 
 try:
@@ -18,6 +19,29 @@ try:
 except ImportError:
     newrelic = None  # type: ignore[assignment]
     HAS_NEWRELIC = False
+
+
+def _package_version(package: str) -> str:
+    """Return a package version for New Relic framework metadata."""
+    try:
+        return version(package)
+    except PackageNotFoundError:
+        return "unknown"
+
+
+quart_version = _package_version("quart")
+uvicorn_version = _package_version("uvicorn")
+
+
+def asgi_wrap(app: Any) -> Any:
+    """Wrap an ASGI app so New Relic records a web transaction per request."""
+    if HAS_NEWRELIC:
+        return newrelic.agent.ASGIApplicationWrapper(
+            app,
+            framework=("Quart", quart_version),
+            dispatcher=("Uvicorn", uvicorn_version),
+        )
+    return app
 
 
 @contextmanager
@@ -43,6 +67,24 @@ def add_attribute(key: str, value: Any) -> None:
     """
     if HAS_NEWRELIC:
         newrelic.agent.add_custom_attribute(key, value)
+
+
+def record_event(name: str, params: dict[str, Any]) -> None:
+    """Record a custom event when New Relic is active."""
+    if HAS_NEWRELIC:
+        newrelic.agent.record_custom_event(name, params)
+
+
+def set_transaction_name(name: str, group: str | None = None) -> None:
+    """Set the name and group of the current New Relic transaction."""
+    if HAS_NEWRELIC:
+        newrelic.agent.set_transaction_name(name, group=group)
+
+
+def ignore_transaction() -> None:
+    """Exclude the current request from New Relic transaction reporting."""
+    if HAS_NEWRELIC:
+        newrelic.agent.ignore_transaction()
 
 
 def record_metric(name: str, value: float) -> None:

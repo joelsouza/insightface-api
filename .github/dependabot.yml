@@ -1,0 +1,30 @@
+# Dependabot must find this file at .github/dependabot.yml. It was previously
+# at .github/.dependabot.yml, which is not a path Dependabot reads.
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      # One PR for the test and lint tools instead of one per tool.
+      dev-tools:
+        patterns:
+          - "pytest*"
+          - "mypy"
+          - "black"
+          - "isort"
+          - "ruff"
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # Keeps the action versions current. actions/labeler was pinned to v4 long
+  # after v5 changed the configuration format.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

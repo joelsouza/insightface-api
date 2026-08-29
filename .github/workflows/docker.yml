@@ -1,0 +1,100 @@
+# Builds the production image and proves it can serve a request.
+#
+# This is the deployment artifact, so the checks that matter are the ones the
+# unit tests cannot cover: that the image builds, that the baked-in model
+# files are found, that no model is downloaded at startup, and that a real
+# image comes back with the faces in it.
+
+name: Docker image
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          tags: insightface-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Start container
+        run: docker run -d --name api -p 5001:5001 insightface-api:ci
+
+      - name: Wait for the model to load
+        run: |
+          for _ in $(seq 1 60); do
+            if curl -fsS localhost:5001/health | grep -q '"status":"healthy"'; then
+              echo "healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "the service never became healthy"
+          exit 1
+
+      - name: Assert no model download at startup
+        run: |
+          # insightface logs "download_path:" when it fetches the model bundle.
+          # The image bakes the two files in, so this must not appear.
+          if docker logs api 2>&1 | grep -q "download_path:"; then
+            echo "the container downloaded the model instead of using the baked-in files"
+            exit 1
+          fi
+          echo "no download"
+
+      - name: Detect faces in a real image
+        run: |
+          # The insightface package ships a sample photo with six faces.
+          sample=$(docker exec api python -c \
+            "import insightface, pathlib; print(pathlib.Path(insightface.__file__).parent / 'data/images/t1.jpg')")
+          docker cp "api:$sample" ./sample.jpg
+          curl -fsS -F "image_file=@sample.jpg" localhost:5001/represent -o out.json
+          python3 - <<'PY'
+          import json
+
+          with open("out.json") as f:
+              body = json.load(f)
+
+          faces = body["faces_detected"]
+          print(f"faces detected: {faces}")
+          assert faces == 6, f"expected 6 faces, got {faces}"
+
+          embedding = body["embeddings"][0]["embedding"]
+          assert len(embedding) == 512, len(embedding)
+          assert all(v == round(v, 6) for v in embedding), "embeddings are not rounded"
+          PY
+
+      - name: Reject an unlisted image_url
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "content-type: application/json" \
+            -d '{"image_url":"https://evil.example.com/a.jpg"}' \
+            localhost:5001/represent)
+          test "$code" = "400" || { echo "expected 400, got $code"; exit 1; }
+
+      - name: Container logs
+        if: always()
+        run: docker logs api

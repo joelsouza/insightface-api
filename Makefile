@@ -18,8 +18,8 @@ test:
 docker-build:
 	docker build -t $(IMAGE_NAME):$(IMAGE_TAG) .
 
+# The image already contains the model files, so no volume is mounted.
 docker-run:
 	docker run --rm -it \
 		-p 5001:5001 \
-		-v $(PWD)/insightface:/app/insightface \
 		$(IMAGE_NAME):$(IMAGE_TAG)
