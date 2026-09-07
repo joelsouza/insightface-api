@@ -16,4 +16,4 @@ black==26.5.1
 isort==9.0.1
 
 # Linting
-ruff==0.16.5
+ruff==0.16.6
