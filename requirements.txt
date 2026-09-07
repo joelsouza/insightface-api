@@ -8,7 +8,7 @@ numpy==2.5.2
 opencv-python-headless==5.0.0.93
 
 # Web framework (async)
-quart==0.23.0
+quart==0.23.1
 uvicorn[standard]==0.52.4
 
 # HTTP client for the image_url input
