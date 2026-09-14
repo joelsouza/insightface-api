@@ -2,7 +2,7 @@
 # Use this for Docker builds to minimize image size
 
 # Core ML dependencies
-insightface==1.0.1
+insightface==2.0
 onnxruntime==1.29.0
 numpy==2.5.2
 opencv-python-headless==5.0.0.93
