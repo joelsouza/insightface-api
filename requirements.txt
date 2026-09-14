@@ -4,7 +4,7 @@
 # Core ML dependencies
 insightface==1.0.1
 onnxruntime==1.29.0
-numpy==2.5.2
+numpy==2.5.3
 opencv-python-headless==5.0.0.93
 
 # Web framework (async)
