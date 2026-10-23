@@ -22,7 +22,7 @@ pydantic-settings==2.15.0
 newrelic==13.5.0
 
 # Used directly by src/services/pipeline.py
-Pillow==12.3.0
+Pillow==13.0.0
 
 # Required by insightface (transitive but pinned for reproducibility)
 tqdm==4.70.0
